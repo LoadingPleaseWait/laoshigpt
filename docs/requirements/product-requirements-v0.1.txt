@@ -1,0 +1,303 @@
+# Chinese Tutoring App — Product Requirements v0.1
+
+Status
+- Draft for alignment (no coding yet)
+- Focus: conversational Chinese practice with AI tutor
+
+Document Goal
+Define exactly what we are building for MVP so implementation is straightforward and scope-controlled.
+
+--------------------------------------------------
+1) Product Vision
+--------------------------------------------------
+Build a mobile app that helps beginner/intermediate English-speaking learners improve spoken Chinese through short, structured, AI-guided conversation practice.
+
+Core promise:
+- "Practice real conversation daily, get immediate corrections, and retain improvements over time."
+
+--------------------------------------------------
+2) Target Users
+--------------------------------------------------
+Primary Persona A: Busy adult beginner
+- 10–20 minutes/day
+- Wants practical speaking ability
+- Needs confidence and consistency
+
+Primary Persona B: Early intermediate learner
+- Knows basic grammar and vocabulary
+- Needs fluency and correction feedback
+- Wants realistic scenario practice
+
+Out of scope for MVP:
+- Child-focused learning
+- Advanced business/legal Chinese curriculum
+- Classroom/teacher admin platform
+
+--------------------------------------------------
+3) Problem Statement
+--------------------------------------------------
+Current language apps often provide either:
+- static drills with weak conversation realism, or
+- open chat without pedagogical structure.
+
+Users need:
+- realistic conversation turns
+- level-appropriate language
+- immediate, actionable correction
+- memory/review of mistakes
+
+--------------------------------------------------
+4) MVP Goals and Success Criteria
+--------------------------------------------------
+MVP Goals
+1. Deliver consistent daily conversation practice.
+2. Provide correction loop that improves learner output.
+3. Create measurable retention and habit formation.
+
+Success Metrics (first 60 days after beta)
+- Activation: >=60% complete first full practice session
+- Engagement: median >=8 turns/session
+- Learning loop: >=40% of corrected turns are retried by learner
+- Retention: D7 >=20% (initial target)
+- Quality: <3% failed tutor responses (schema/timeout/critical errors)
+
+--------------------------------------------------
+5) MVP Scope (Must / Should / Could)
+--------------------------------------------------
+Must Have (MVP)
+1. Account + profile setup
+   - Learner level selection (e.g., HSK1/HSK2/HSK3)
+   - Learning goal selection (travel/social/work basics)
+
+2. Conversation practice
+   - Free chat mode (guided)
+   - Scenario roleplay mode (at least 3 scenarios)
+     a) ordering food
+     b) introducing yourself
+     c) asking for directions
+
+3. Tutor response package per turn
+   - Chinese reply
+   - Pinyin
+   - English translation
+   - Correction (if needed)
+   - Next question/prompt
+
+4. Correction + retry loop
+   - User sees correction
+   - User retries improved sentence
+   - App acknowledges improvement
+
+5. Session history
+   - Save sessions and turns
+   - Resume recent conversation context
+
+6. Review queue (basic SRS-lite)
+   - Store corrected items
+   - Daily review list of recent mistakes
+
+7. Basic analytics
+   - Session start/end
+   - Turns completed
+   - Corrections shown/accepted
+
+Should Have (if schedule allows)
+- Streaks and reminders
+- Daily goal setting
+- Scenario difficulty levels
+- Basic pronunciation scoring hints
+
+Could Have (post-MVP)
+- Voice input + automatic speech transcription
+- Rich pronunciation scoring
+- Teacher dashboard
+- Social features/leaderboards
+
+Won’t Have in MVP
+- Full grammar course content library
+- Live human tutor marketplace
+- Desktop/web client
+
+--------------------------------------------------
+6) Core User Flows
+--------------------------------------------------
+Flow A: First-Time User
+1. Install app
+2. Create account
+3. Choose level + goal
+4. Start first scenario session
+5. Complete 8+ turns
+6. View session summary + saved corrections
+
+Flow B: Daily Returning User
+1. Open app
+2. See suggested practice mode + review queue
+3. Complete short review (2–5 items)
+4. Start conversation practice
+5. Finish and view progress
+
+Flow C: Correction & Retry
+1. User message submitted
+2. Tutor responds with correction field
+3. User taps "Try again"
+4. User sends improved sentence
+5. App marks correction as retried/accepted
+
+--------------------------------------------------
+7) Functional Requirements (FR)
+--------------------------------------------------
+FR-01 Account/Profile
+- User can create account and maintain learner profile.
+- System stores level, goals, preferred script (Simplified default).
+
+FR-02 Session Management
+- User can create/start/end a practice session.
+- Session stores mode, scenario, timestamps, turn count.
+
+FR-03 Conversation Turn Processing
+- User submits text turn.
+- System returns structured tutor response with required fields.
+
+FR-04 Level-Constrained Tutoring
+- Tutor output must stay within configured vocabulary/complexity constraints.
+
+FR-05 Corrections
+- System detects and returns correction suggestions where applicable.
+- Correction includes original, corrected, and short reason.
+
+FR-06 Retry Tracking
+- User can submit retry attempt after correction.
+- System records whether correction was accepted/retried.
+
+FR-07 Review Queue
+- Corrections can be promoted to review items.
+- User can complete daily review queue.
+
+FR-08 Session History
+- User can view recent sessions and conversation history.
+
+FR-09 Analytics Events
+- System logs core events for product and learning analysis.
+
+FR-10 Error Handling
+- If tutor response fails/timeout, system provides graceful fallback and retry action.
+
+--------------------------------------------------
+8) Non-Functional Requirements (NFR)
+--------------------------------------------------
+NFR-01 Performance
+- P95 tutor turn response <= 4.0s (text response)
+- App remains responsive during loading states
+
+NFR-02 Reliability
+- >=99% successful turn processing excluding external outages
+
+NFR-03 Scalability (MVP)
+- Support initial beta cohort without architecture rewrite
+
+NFR-04 Security
+- No LLM provider keys in mobile app
+- Basic auth and encrypted transport
+
+NFR-05 Privacy
+- Clear consent for storing conversation/learning data
+- User can delete account and learning history
+
+NFR-06 Observability
+- Log latency, errors, model/provider version, prompt version
+
+--------------------------------------------------
+9) Content Requirements
+--------------------------------------------------
+- Minimum 3 scenario packs with scripted objectives and example intents.
+- Each scenario has:
+  - objective
+  - expected vocabulary range
+  - completion condition
+- Vocabulary tagging by level (HSK-aligned baseline).
+
+--------------------------------------------------
+10) Data Model (Conceptual)
+--------------------------------------------------
+Entities
+- User
+- LearningProfile
+- Session
+- MessageTurn
+- Correction
+- ReviewItem
+- AnalyticsEvent
+
+Key relationships
+- User 1->N Sessions
+- Session 1->N MessageTurns
+- MessageTurn 0..N Corrections
+- User 1->N ReviewItems
+
+--------------------------------------------------
+11) UX Requirements
+--------------------------------------------------
+- Keep session start under 2 taps for returning users.
+- Make correction visually obvious and actionable.
+- Never block user when model fails; always offer retry.
+- Minimize cognitive overload (short responses, clean layout).
+
+--------------------------------------------------
+12) MVP Acceptance Criteria
+--------------------------------------------------
+MVP is ready for beta when:
+1. All Must-Have scope implemented and QA-verified.
+2. 3 scenario modes usable end-to-end.
+3. Correction & retry loop works reliably.
+4. Session history + review queue are functional.
+5. Analytics events captured for core funnel.
+6. Privacy policy and account deletion flow are in place.
+
+--------------------------------------------------
+13) Risks and Mitigations
+--------------------------------------------------
+Risk: LLM output inconsistency
+- Mitigation: strict response schema + fallback handling
+
+Risk: Scope creep
+- Mitigation: enforce Must/Should/Could and freeze MVP scope
+
+Risk: Weak learning outcomes
+- Mitigation: prioritize correction-retry-review loop before adding features
+
+Risk: Latency frustration
+- Mitigation: optimize prompt length and use fast-turn model profile
+
+--------------------------------------------------
+14) Open Decisions (Need Team Alignment)
+--------------------------------------------------
+D1. Target learner level at launch:
+- HSK1 only, or HSK1-2?
+
+D2. Script support at launch:
+- Simplified only, or Simplified + Traditional?
+
+D3. Input mode at launch:
+- Text-only, or text + voice?
+
+D4. Session target length:
+- 5, 10, or 15 minutes default?
+
+D5. Scenario count at launch:
+- 3 baseline scenarios, or 5?
+
+D6. Monetization at MVP:
+- free beta, freemium, or paid pilot?
+
+--------------------------------------------------
+15) Recommended Freeze for v1 (Proposal)
+--------------------------------------------------
+To move quickly and reduce risk:
+- Launch with HSK1-2
+- Simplified only
+- Text input only (voice in v1.1)
+- 10-minute default sessions
+- 3 core scenarios
+- Free private beta
+
+End of v0.1

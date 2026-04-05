@@ -1,0 +1,175 @@
+# Backend Architecture Inspired by laoshigpt
+
+Source reviewed
+- Repo: https://github.com/LoadingPleaseWait/laoshigpt
+- Current implementation is a notebook prototype (`laoshi_prototype.ipynb`) using:
+  - LangChain + LangGraph
+  - Gemini model
+  - Prompted Chinese tutor persona
+  - In-memory conversation state via thread_id
+  - gTTS for Chinese audio output
+
+What this means for your product
+- The core idea is strong: tutor persona + conversational memory + immediate audio output.
+- To productionize for a React Native app, move notebook logic into API endpoints and persistent storage.
+
+--------------------------------------------------
+1) Prototype Pattern -> Production Pattern
+--------------------------------------------------
+Prototype (Notebook)
+- Loop: read user text -> call model -> print -> TTS -> play audio
+- Memory: temporary in-process state
+- Prompt: long system prompt controlling tutor style and vocabulary constraints
+
+Production Backend (Recommended)
+- Stateless API + persistent session state
+- Endpoint receives user turn and returns structured response JSON
+- Response optionally includes TTS URL
+- Session history persisted in DB, with summarization for context window control
+
+--------------------------------------------------
+2) Suggested Backend Components
+--------------------------------------------------
+A) API Service
+- Framework: FastAPI (Python) or Nest/Express (Node)
+- Responsibilities:
+  - Auth/session handling
+  - Prompt assembly
+  - LLM call orchestration
+  - JSON contract validation
+  - TTS generation trigger
+  - Event logging
+
+B) Tutor Orchestrator
+- Encapsulate your current LangGraph logic:
+  - Input: learner message + session context + user profile
+  - Output: structured tutor response
+- Keep thread/session id concept from prototype.
+
+C) Prompt Library
+- Store tutor prompts by:
+  - level (HSK1, HSK2, HSK3)
+  - mode (free chat, scenario, goal-task)
+- Add strict rules:
+  - max response length
+  - vocabulary ceiling
+  - correction style
+  - output JSON format
+
+D) Persistence Layer
+- Postgres recommended.
+- Tables:
+  - users
+  - learning_profiles
+  - sessions
+  - messages
+  - corrections
+  - vocabulary_items
+  - review_queue (SRS)
+  - analytics_events
+
+E) Audio Service
+- TTS provider abstraction (start with one provider)
+- Input: assistant Chinese text
+- Output: audio file URL + duration metadata
+
+F) Observability
+- Log request latency, model cost, token usage, error rates.
+- Keep prompt version + model version in logs for debugging quality regressions.
+
+--------------------------------------------------
+3) API Contract (v1)
+--------------------------------------------------
+POST /v1/chat/turn
+Request
+{
+  "session_id": "sess_123",
+  "user_id": "user_123",
+  "mode": "scenario",
+  "scenario": "restaurant_ordering",
+  "hsk_level": "HSK2",
+  "user_text": "我想点一杯咖啡",
+  "client_ts": "2026-04-04T20:00:00Z"
+}
+
+Response
+{
+  "assistant_reply_zh": "很好。你还可以说：我想点一杯热咖啡。",
+  "pinyin": "Hěn hǎo. Nǐ hái kěyǐ shuō: Wǒ xiǎng diǎn yì bēi rè kāfēi.",
+  "english_translation": "Great. You can also say: I'd like to order a hot coffee.",
+  "corrections": [
+    {
+      "original": "我想点一杯咖啡",
+      "corrected": "我想点一杯热咖啡",
+      "reason": "Adds adjective for specificity and natural flow"
+    }
+  ],
+  "vocabulary_highlights": [
+    {"word": "热", "pinyin": "rè", "meaning": "hot"}
+  ],
+  "next_question": "你要加糖吗？",
+  "tts": {
+    "audio_url": "https://cdn.example.com/tts/abc123.mp3",
+    "voice": "zh-TW",
+    "duration_ms": 2400
+  },
+  "session_state": {
+    "turn_index": 8,
+    "prompt_version": "tutor-v1.2",
+    "model": "gemini-2.5-pro"
+  }
+}
+
+Additional endpoints
+- POST /v1/sessions/start
+- GET /v1/sessions/:id/history
+- POST /v1/review/submit
+- GET /v1/review/queue
+- POST /v1/analytics/events
+
+--------------------------------------------------
+4) Prompt Design Recommendations (from prototype)
+--------------------------------------------------
+Keep the strengths from laoshigpt prompt:
+- encouraging and patient tutor persona
+- concise responses
+- progressive difficulty
+- correction in real-time
+
+Add production guardrails:
+- explicit JSON schema requirement
+- strict max tokens per response
+- no unsupported formatting
+- level-constrained vocabulary list per HSK band
+
+--------------------------------------------------
+5) Migration Plan (Prototype -> App Backend)
+--------------------------------------------------
+Phase 1: Extract core tutor loop
+- Move notebook model-call logic into a backend service module.
+- Keep same tutor behavior and prompt, but return JSON.
+
+Phase 2: Add persistent sessions
+- Replace in-memory thread memory with DB-backed history.
+
+Phase 3: Add TTS pipeline
+- Generate audio on each tutor response and return URL.
+
+Phase 4: Add correction-to-SRS pipeline
+- Parse corrections and push to spaced repetition queue.
+
+Phase 5: Add analytics and quality checks
+- Measure latency, correction usefulness, and retention.
+
+--------------------------------------------------
+6) Immediate Implementation Tasks (next 1-2 weeks)
+--------------------------------------------------
+1. Define JSON response schema and validate all model outputs.
+2. Implement `POST /v1/chat/turn` with persistent session storage.
+3. Port your existing tutor prompt from notebook to backend prompt template.
+4. Add one TTS provider and include `tts.audio_url` in responses.
+5. Instrument events: session_start, turn_submitted, correction_accepted, session_completed.
+
+Bottom line
+- laoshigpt gives you an excellent tutor-conversation nucleus.
+- The main backend work is converting notebook flow into robust API + persistence + structured outputs + learning analytics.

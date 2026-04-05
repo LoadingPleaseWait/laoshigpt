@@ -1,0 +1,95 @@
+# Chinese Tutoring App (React Native + LLM) — Core Concepts Reference
+
+Context
+- Team direction: React Native to ship one codebase across iOS/Android.
+- Current progress: experimenting with LLM-generated Chinese conversation practice.
+
+Why React Native
+- One shared codebase for iOS and Android.
+- Faster iteration for early product development.
+- Still expect some platform-specific work (audio, permissions, notifications).
+
+1) Conversation Product Design (Tutor, not generic chat)
+- Define practice modes:
+  - Free chat
+  - Scenario roleplay (restaurant, travel, interview)
+  - Goal-based dialogues (complete a communication task)
+- Define successful practice outcomes:
+  - Learner produces Chinese output
+  - App provides correction and explanation
+  - Learner retries improved output
+
+2) Prompt Engineering for Tutoring
+- Use strong system prompts to enforce tutor behavior:
+  - Keep language level-appropriate
+  - Correct gently and clearly
+  - Use English support only when needed
+  - Drive active learner output
+- Build prompt templates by level (e.g., HSK bands) and scenario type.
+
+3) Structured LLM Outputs (Critical for app stability)
+- Prefer structured JSON over free text.
+- Recommended fields:
+  - assistant_reply_zh
+  - pinyin
+  - english_translation
+  - corrections[]
+  - vocabulary_highlights[]
+  - next_question
+- Benefits:
+  - Stable UI rendering
+  - Easier testing/validation
+  - Better analytics
+
+4) React Native Fundamentals for this Use Case
+- Navigation flow:
+  - Onboarding -> Scenario Select -> Practice Chat -> Review
+- State management:
+  - Message history, learner level, session goals, correction state
+- Async UX:
+  - Loading indicators, retries, timeout handling, graceful error states
+- Local persistence:
+  - Save sessions and review items offline
+
+5) Backend Orchestration (Do not call LLM directly from app)
+- Use backend for:
+  - API key protection
+  - Prompt assembly
+  - Rate limiting and abuse prevention
+  - Logging and quality evaluation
+  - Model/provider switching
+
+6) Learning Feedback Loop (Core learning engine)
+- Loop per learner response:
+  1. Learner answers in Chinese
+  2. App identifies issues
+  3. App provides corrected version + short explanation
+  4. Learner retries corrected answer
+  5. Save mistakes to review deck (SRS)
+- This loop differentiates tutoring from chatbot behavior.
+
+7) Cost and Latency Management
+- Keep prompts compact and focused.
+- Summarize old context instead of sending full transcript.
+- Cache repeated scenario setup text.
+- Use fast model for turn-by-turn chat; stronger model for deeper feedback.
+- Define strict timeout and fallback behavior.
+
+8) Evaluation and Product Metrics
+- Track whether learning is improving:
+  - Session completion rate
+  - Turns per session
+  - Retry-after-correction rate
+  - Error recurrence over time
+  - D7/D30 retention
+
+Suggested Near-Term Build Priorities
+1. Define v1 conversation modes and learner levels.
+2. Implement structured JSON response contract.
+3. Build backend LLM orchestration endpoint.
+4. Build chat + correction + retry loop UI in React Native.
+5. Add analytics events and baseline dashboard.
+
+Notes
+- Keep v1 narrow: one or two scenarios, clear correction UX, measurable outcomes.
+- Expand content and pedagogy depth only after learning loop quality is validated.
