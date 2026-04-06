@@ -1,0 +1,25 @@
+Metadata-Version: 2.4
+Name: laoshigpt-backend
+Version: 0.1.0
+Summary: Backend API for LaoshiGPT
+Requires-Python: >=3.9
+Description-Content-Type: text/markdown
+Requires-Dist: fastapi>=0.115.0
+Requires-Dist: uvicorn>=0.30.0
+Requires-Dist: pydantic>=2.8.0
+Requires-Dist: sqlmodel>=0.0.22
+Requires-Dist: alembic>=1.13.0
+Provides-Extra: dev
+Requires-Dist: pytest>=8.2.0; extra == "dev"
+Requires-Dist: httpx>=0.27.0; extra == "dev"
+Requires-Dist: ruff>=0.6.0; extra == "dev"
+
+# LaoshiGPT Backend
+
+## Run locally
+1) python -m venv .venv
+2) source .venv/bin/activate
+3) pip install -e .[dev]
+4) uvicorn app.main:app --reload
+
+Health check: GET http://localhost:8000/health

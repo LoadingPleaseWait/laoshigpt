@@ -1,0 +1,77 @@
+# LaoshiGPT Frontend Technical Requirements v0.1
+
+Status
+- Draft for execution alignment
+- Scope: mobile client only (`frontend/`)
+
+1) Platform and framework
+- React Native with Expo (TypeScript)
+- iOS + Android from one codebase
+- Text-only chat for MVP (no voice recording required in v0.1)
+
+2) App architecture
+- Directory root: `frontend/`
+- Required modules:
+  - `src/navigation/` (app flow)
+  - `src/screens/` (Onboarding, ModeSelect, Practice, Summary, Review)
+  - `src/components/` (chat turns, correction cards, retry composer)
+  - `src/services/api/` (typed API client)
+  - `src/state/` (session/user/correction state)
+  - `src/types/` (contract-aligned TS types)
+
+3) Required user flows
+- First-run onboarding (level + goals)
+- Scenario selection (3 MVP scenarios)
+- Practice conversation (8+ turns target)
+- Correction -> retry UX
+- Session summary with saved corrections
+- Daily review queue completion flow
+
+4) API integration requirements
+- Must not call LLM providers directly
+- Must use backend APIs only:
+  - `POST /v1/sessions/start`
+  - `POST /v1/chat/turn`
+  - `POST /v1/sessions/end`
+  - `GET /v1/review/queue`
+  - `POST /v1/review/submit`
+- Must enforce shared tutor response contract locally before rendering
+
+5) UX and performance requirements
+- Returning user can start practice in <= 2 taps
+- Loading states for every async action
+- Graceful retries for timeout/failure
+- Keep UI minimal and readable for language learning
+- No hard crashes from malformed backend payloads
+
+6) State and persistence requirements
+- Persist learner profile and recent session metadata locally
+- Keep unsent draft input during transient failures
+- Support offline-safe resume entry state (lightweight)
+
+7) Quality requirements
+- TypeScript strict mode enabled
+- Lint + format checks configured
+- Component tests for correction/retry flow
+- Integration tests for onboarding -> practice -> summary happy path
+
+8) Security and privacy requirements
+- No secrets/API keys in app bundle
+- Use secure transport only (HTTPS)
+- Display privacy consent language before storing learning history
+
+9) Analytics requirements (client-side emit)
+- Emit events for:
+  - session_start
+  - turn_submitted
+  - correction_shown
+  - correction_accepted
+  - review_completed
+  - session_end
+- Include: session_id, mode, scenario, level, timestamp
+
+10) Out of scope (frontend v0.1)
+- Live voice input/transcription
+- Pronunciation scoring UI
+- Social/leaderboard features
+- Desktop/web client
