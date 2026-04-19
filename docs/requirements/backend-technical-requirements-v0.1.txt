@@ -1,0 +1,83 @@
+# LaoshiGPT Backend Technical Requirements v0.1
+
+Status
+- Draft for execution alignment
+- Scope: API + orchestration + persistence (`backend/`)
+
+1) Platform and framework
+- Python FastAPI service
+- Postgres as system of record
+- Alembic migrations required
+- Pydantic schema validation for all input/output contracts
+
+2) Service architecture
+- Directory root: `backend/`
+- Required modules:
+  - `app/main.py` (app bootstrap)
+  - `app/routes/` (sessions, chat, review, analytics)
+  - `app/services/` (tutor orchestrator, prompt library, provider adapters)
+  - `app/models/` (DB entities)
+  - `app/schemas/` (request/response contracts)
+  - `app/db/` (session/engine/config)
+  - `tests/` (route + service coverage)
+
+3) LLM orchestration requirements
+- Backend-only provider access (keys never exposed to client)
+- Prompt templates parameterized by:
+  - HSK level
+  - practice mode
+  - scenario
+- Structured JSON output required and validated before response
+- Timeout + retry policy with graceful fallback payload
+
+4) Required API surface (MVP)
+- `GET /health`
+- `POST /v1/sessions/start`
+- `POST /v1/sessions/end`
+- `GET /v1/sessions/{id}/history`
+- `POST /v1/chat/turn`
+- `GET /v1/review/queue`
+- `POST /v1/review/submit`
+- `POST /v1/analytics/events`
+
+5) Data model requirements
+- Entities:
+  - User
+  - LearningProfile
+  - Session
+  - MessageTurn
+  - Correction
+  - ReviewItem
+  - AnalyticsEvent
+- Indexes on user/session/timestamp dimensions
+- Store prompt_version + model/provider metadata per turn
+
+6) Learning loop requirements
+- Detect and return corrections with reason
+- Track retry attempts and acceptance state
+- Promote corrections to review queue
+- Support daily queue retrieval and submission updates
+
+7) Non-functional requirements
+- P95 turn latency <= 4.0s target (text response)
+- >=99% successful turn processing (excluding provider outages)
+- Structured error codes and client-safe fallback messages
+- Observability for latency, error type, provider/model, prompt version
+
+8) Security and privacy requirements
+- HTTPS only
+- Auth-compatible middleware interface (JWT-ready)
+- Rate limiting on conversation endpoints
+- Data deletion support for account + learning history
+- No logging of secrets
+
+9) Testing requirements
+- Unit tests for orchestrator and schema validation
+- Endpoint tests for happy path + failure path
+- Migration test on clean DB
+- Contract tests to ensure response shape stability
+
+10) Out of scope (backend v0.1)
+- Full voice transcription pipeline
+- Advanced adaptive SRS algorithms
+- Multi-tenant enterprise admin features

@@ -1,0 +1,10 @@
+{
+  "expo": {
+    "name": "LaoshiGPT",
+    "slug": "laoshigpt",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "assetBundlePatterns": ["**/*"]
+  }
+}

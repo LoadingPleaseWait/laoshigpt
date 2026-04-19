@@ -1,0 +1,58 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://laoshigpt/schemas/tutor-response.schema.json",
+  "title": "TutorTurnResponse",
+  "type": "object",
+  "required": [
+    "assistant_reply_zh",
+    "pinyin",
+    "english_translation",
+    "corrections",
+    "vocabulary_highlights",
+    "next_question",
+    "session_state"
+  ],
+  "properties": {
+    "assistant_reply_zh": { "type": "string" },
+    "pinyin": { "type": "string" },
+    "english_translation": { "type": "string" },
+    "corrections": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["original", "corrected", "reason"],
+        "properties": {
+          "original": { "type": "string" },
+          "corrected": { "type": "string" },
+          "reason": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "vocabulary_highlights": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["word", "pinyin", "meaning"],
+        "properties": {
+          "word": { "type": "string" },
+          "pinyin": { "type": "string" },
+          "meaning": { "type": "string" }
+        },
+        "additionalProperties": false
+      }
+    },
+    "next_question": { "type": "string" },
+    "session_state": {
+      "type": "object",
+      "required": ["turn_index", "prompt_version", "model"],
+      "properties": {
+        "turn_index": { "type": "integer", "minimum": 0 },
+        "prompt_version": { "type": "string" },
+        "model": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}
