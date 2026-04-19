@@ -1,0 +1,119 @@
+# Competitive Analysis
+# Source: initial call recording (docs/initialcall.md)
+
+--------------------------------------------------
+1) Duolingo — Video Call Feature (Lily)
+--------------------------------------------------
+Overview:
+- Premium-tier feature ("Duolingo Max") at ~$30/month.
+- A simulated video call with an AI character named Lily.
+- Lily speaks only in the target language (does not respond in English).
+- Open-ended conversation — no fixed topic, Lily adapts to learner.
+
+How it works (observed behavior):
+- Push-style input: user taps button to start recording, taps again to stop.
+- Lily responds with audio in the target language.
+- At end of session, user rates difficulty (too easy / too hard); Lily adjusts next time.
+- Lily will redirect conversation away from certain topics (guardrails exist).
+- Powered by GPT-4 (per 2023 Duolingo blog post; may have updated since).
+- NOT using a native voice-to-voice model — confirmed to be STT -> LLM -> TTS.
+
+Mandarin Chinese availability:
+- NOT officially released for Mandarin on Android as of call date.
+- A workaround exists: on the Practice page, the video call button flickers
+  briefly on load — users can tap it before it disappears to initiate a session.
+- Cantonese: shows a "not supported yet" message when accessed via workaround.
+- May be officially available on iOS (unconfirmed by team).
+
+Weaknesses identified:
+1. No vocabulary restriction to learner's level
+   - Lily regularly uses words that are not taught in the Duolingo course.
+   - This is a significant flaw for learners studying for specific exams (e.g., HSK).
+   - Duolingo guards the topic/content of conversation but not vocabulary level.
+
+2. No pronunciation feedback
+   - Lily cannot detect mispronunciation.
+   - At most, Lily will say "I don't understand" — no specific guidance on what
+     was wrong or how to fix it.
+
+3. English-only coaching impossible
+   - Lily responds only in the target language.
+   - Beginners cannot get English explanations of errors.
+
+4. Model may be undersized
+   - Observed failure: Lily could not recognize "Texas Rangers" or "Houston Astros"
+     in Mandarin, even after user explicitly mentioned American baseball teams
+     in context.
+   - Hypothesis: model is either too small or has weak Mandarin sports knowledge.
+   - Using STT -> LLM -> TTS likely removes nuance, and a smaller model may
+     have less Mandarin coverage for niche topics.
+
+5. AI-generated lesson quality degradation
+   - Duolingo's shift toward heavy LLM use has introduced quality issues across
+     the platform (not just video call) — listening exercises filled with words
+     never taught in the course.
+
+Our Differentiation vs Duolingo:
+- HSK vocabulary restriction (primary differentiator — Duolingo has nothing like this).
+- Bilingual coaching (English explanations available for errors).
+- Voice-to-voice model (preserves pronunciation for actual assessment).
+- Pronunciation feedback (goal — not possible with Duolingo's architecture).
+- Actually works for Mandarin without a workaround.
+
+--------------------------------------------------
+2) Pingo AI
+--------------------------------------------------
+Overview:
+- Observed via social media (Instagram Reels), not directly tested by team.
+- Appears to be a voice-based AI language learning app.
+- Has attracted attention with emotional user reaction videos (learners frustrated
+  with difficult pronunciation, e.g., English learners crying over pronunciation,
+  Mandarin learners struggling with tones).
+
+What is known:
+- Operates in a similar space: AI voice tutor for language learning.
+- Has some kind of voice interaction feature.
+- Unknown: vocabulary restriction capability, pronunciation detection accuracy,
+  pricing, supported languages, model architecture.
+
+Status: Not evaluated. Worth a direct trial to understand feature parity.
+
+Action item: One team member should test Pingo AI and report findings.
+
+--------------------------------------------------
+3) Generic LLM Chat (ChatGPT, etc.)
+--------------------------------------------------
+Used informally for language practice by many learners.
+
+Weaknesses for language learning:
+- No vocabulary restriction: immediately uses advanced vocabulary,
+  idiomatic expressions, and complex sentence structures.
+- Not designed for teaching: responds to communicate, not to instruct.
+- Complexity escalates quickly — not appropriate for HSK1-3 learners.
+- No pronunciation assessment (text-only in most interactions).
+- No structured correction loop or retry mechanism.
+
+Conclusion: The gap between vanilla LLM chat and a purpose-built tutor
+is large. This is the core opportunity for our product.
+
+--------------------------------------------------
+4) Competitive Positioning Summary
+--------------------------------------------------
+Competitor         | Vocab Restrict | Pronunciation | Bilingual | Mandarin Ready
+-------------------|---------------|---------------|-----------|----------------
+Duolingo Max       | No            | No            | No        | Workaround only
+Pingo AI           | Unknown       | Unknown       | Unknown   | Unknown
+ChatGPT (raw)      | No            | No            | Yes       | Yes
+Our Product (goal) | Yes (HSK)     | Yes (target)  | Yes       | Yes (MVP)
+
+--------------------------------------------------
+5) Market Observation
+--------------------------------------------------
+- Even the market leader (Duolingo) is not done with AI-powered Mandarin voice practice.
+- The space is not saturated — significant room for a more focused, better-quality product.
+- The core insight: existing tools guard conversation topic but not vocabulary level.
+  Vocabulary-level restriction is an unexplored and high-value differentiator.
+- Voice-to-voice model architecture is a technical moat if pronunciation detection
+  can be delivered reliably.
+
+End of competitive-analysis.txt

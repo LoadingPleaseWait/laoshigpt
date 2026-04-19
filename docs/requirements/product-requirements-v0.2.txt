@@ -1,0 +1,295 @@
+# Chinese Tutoring App — Product Requirements v0.2
+# Updated from: initial call recording (see docs/initialcall.md)
+# Changes from v0.1: MVP platform changed to TUI, voice input elevated to MVP,
+#                    HSK vocabulary restriction defined as core differentiator,
+#                    Mandarin-only scope confirmed, voice-to-voice model architecture added.
+
+Status
+- Active draft — incorporating decisions from initial planning call
+- Next step: align on open decisions before beginning implementation
+
+--------------------------------------------------
+1) Product Vision
+--------------------------------------------------
+Build an AI conversation partner that helps English-speaking learners improve
+spoken Mandarin Chinese through voice-based, level-constrained practice sessions.
+
+Core differentiator:
+- Conversations are strictly restricted to the learner's HSK vocabulary band.
+  Unlike Duolingo or generic LLM chat, the AI will never use words outside
+  the learner's current HSK level — keeping practice focused and frustration-free.
+
+Core promise:
+- "Practice real Mandarin conversations, get real pronunciation feedback,
+   stay within vocabulary you are actually learning."
+
+--------------------------------------------------
+2) Platform Decision (Updated from v0.1)
+--------------------------------------------------
+MVP Platform: Terminal User Interface (TUI)
+- Ship a TUI first to validate the core conversation + voice loop quickly.
+- Avoids mobile app complexity (permissions, store submissions, platform quirks).
+- Designed with Figma later; proper frontend (mobile/web) comes post-MVP.
+
+Post-MVP Platform: Mobile app (React Native — iOS/Android)
+- Design in Figma before building.
+- Reuse backend API built for TUI.
+
+--------------------------------------------------
+3) Target Language Scope (Updated from v0.1)
+--------------------------------------------------
+MVP: Mandarin Chinese only (Simplified script)
+- "Chinese" is ambiguous — team agreed to use "Mandarin" going forward.
+- Cantonese, Traditional script, and other languages are post-MVP.
+
+--------------------------------------------------
+4) Target Users (Unchanged from v0.1)
+--------------------------------------------------
+Primary Persona A: Busy adult beginner (HSK1–2 level)
+- 10–20 minutes/day
+- Wants practical spoken confidence
+
+Primary Persona B: Early intermediate learner (HSK3 level)
+- Knows basic grammar and vocabulary
+- Needs fluency practice and pronunciation correction
+
+Out of scope for MVP:
+- Child-focused learning
+- Advanced/business/legal Chinese
+- Classroom or teacher admin tools
+
+--------------------------------------------------
+5) Core Differentiators vs Competitors
+--------------------------------------------------
+1. HSK vocabulary restriction (primary differentiator)
+   - System prompt or retrieval-augmented approach constrains AI output
+     to only words within the learner's configured HSK level.
+   - Duolingo's video call feature does NOT do this — it uses general
+     guardrails on topic but allows out-of-level vocabulary regularly.
+
+2. Pronunciation feedback (stretch goal for MVP, required post-MVP)
+   - Voice-to-voice model architecture to preserve pronunciation variance.
+   - Mispronunciation detection is on the bleeding edge of current AI capability.
+   - Target: detect and flag pronunciation errors, not just comprehension errors.
+
+3. Bilingual coaching mode
+   - AI can respond in both Mandarin and English (for corrections/explanations).
+   - Duolingo's Lily character responds only in the target language — unhelpful
+     for beginners who need English explanations of errors.
+
+--------------------------------------------------
+6) MVP Feature Scope
+--------------------------------------------------
+Must Have (MVP — TUI)
+1. Voice input with push-to-talk
+   - User presses a key/button to start recording, releases to send.
+   - Push-to-talk is required: open-ended VAD (voice activity detection) is
+     not reliable enough and removes learner think-time.
+
+2. Voice-to-voice model interaction
+   - Audio fed directly into multimodal/voice model — NOT transcribed first.
+   - Preserves pronunciation variance for feedback.
+   - Fallback: if voice-to-voice unavailable, use STT -> LLM -> TTS pipeline
+     (but this loses pronunciation detection capability).
+
+3. HSK vocabulary restriction
+   - Loaded from HSK word list (spreadsheet already created for HSK3).
+   - System prompt instructs model to only use words from the configured HSK band.
+   - Level selectable per session (HSK1, HSK2, HSK3 for MVP).
+
+4. AI tutor persona
+   - Maintains conversation naturally in Mandarin.
+   - Can explain errors or words in English when learner asks.
+   - Responds with bilingual coaching (Mandarin reply + English correction note).
+
+5. Mandarin-only target language (MVP)
+   - One target language scope keeps model tuning and testing manageable.
+
+6. Basic session flow
+   - Start session -> conversation turns -> end session.
+   - TUI: keyboard-driven push-to-talk.
+
+Should Have (if time allows in MVP)
+- Pronunciation error flagging (detect and surface mispronounced words).
+- Session summary showing turns completed and any corrections.
+- Adjustable HSK level per session without restarting.
+
+Could Have (post-MVP)
+- Spaced repetition review queue for corrected items.
+- Mobile app (React Native, designed in Figma).
+- Streak tracking and reminders.
+- Multiple Mandarin scenarios (restaurant, directions, introductions).
+- IPA-based pronunciation tokenization (experimental — feasibility unconfirmed).
+
+Won't Have in MVP
+- Cantonese or other Chinese varieties.
+- Traditional script.
+- Full grammar lesson content.
+- Leaderboards or social features.
+- Live human tutor marketplace.
+
+--------------------------------------------------
+7) Voice Architecture (New in v0.2)
+--------------------------------------------------
+Preferred Architecture: Voice-to-Voice (end-to-end audio)
+- Feed raw audio stream directly to a multimodal voice model.
+- Receive audio response directly.
+- Rationale: preserves tonal and pronunciation information that is lost
+  in a speech-to-text transcription step.
+
+Fallback Architecture: STT -> LLM -> TTS pipeline
+- Use only if voice-to-voice model is unavailable or too costly.
+- Accept that pronunciation variance detection will be significantly degraded.
+
+Model Selection Criteria
+- Must be multimodal (audio input + audio output in a single model).
+- Must support Mandarin Chinese natively.
+- Ideally: capable of detecting pronunciation variance / mispronunciation.
+- Currently, Perplexity voice is the only model observed to detect
+  pronunciation variants reliably. GPT-4o Advanced Voice does not reliably
+  flag mispronounced Mandarin, possibly due to overly encouraging system prompts.
+
+Audio Feedback Issue (Known)
+- When running on desktop, AI audio output through speakers is picked up
+  by microphone, causing feedback/echo.
+- Push-to-talk mitigates this by only recording when user explicitly activates mic.
+- Headphone use also mitigates this.
+
+--------------------------------------------------
+8) Backend Language Decision (Updated from v0.1)
+--------------------------------------------------
+- Backend must use a strongly-typed language (not JavaScript or TypeScript).
+- TypeScript was considered but rejected: TypeScript codebases frequently
+  fall back to `any`, making them effectively untyped — especially problematic
+  when integrating LLM outputs which can be unpredictable.
+- Strong typing is especially important for LLM output parsing to catch
+  unexpected structures at compile/runtime.
+- Language TBD (Python with type annotations is current prototype; Go or
+  another strongly-typed language also acceptable).
+
+--------------------------------------------------
+9) HSK Vocabulary Restriction — Implementation Notes
+--------------------------------------------------
+- A vocabulary spreadsheet for HSK3 has already been created by the team.
+- Implementation approach (to be validated):
+  Option A: System prompt injection — include HSK word list in prompt,
+            instruct model to only use those words.
+  Option B: RAG/retrieval — for each model turn, provide example responses
+            built from allowed vocabulary to guide output.
+  Option C: Hybrid — use prompt constraints + post-generation vocabulary check.
+- Challenge: restricting to ~600 words in a natural conversation is hard,
+  even for humans. Expect prompt engineering iteration required.
+
+--------------------------------------------------
+10) Functional Requirements (Updated)
+--------------------------------------------------
+FR-01 Voice Input (Push-to-Talk)
+- User activates microphone via key press / button hold.
+- Audio captured until user releases.
+- Audio sent to voice model (or STT if fallback).
+
+FR-02 Voice Output
+- AI response delivered as audio playback.
+- Mandarin speech output.
+
+FR-03 HSK Vocabulary Constraint
+- Configurable HSK level per session.
+- AI response constrained to configured vocabulary band.
+- System must have HSK word lists for HSK1, HSK2, HSK3 at launch.
+
+FR-04 Bilingual Coaching
+- AI can respond in Mandarin for conversation practice.
+- AI can switch to English for corrections and explanations when needed.
+- Learner can request English explanation in session.
+
+FR-05 Pronunciation Feedback (Stretch for MVP)
+- If voice model supports it, flag mispronounced words in response.
+- Show learner which word was mispronounced and correct pronunciation.
+
+FR-06 Session Management
+- Start and end sessions.
+- Basic session logging (turns, duration).
+
+FR-07 Strongly Typed Response Schemas
+- All LLM outputs validated against defined schemas before use.
+- Fallback/error handling if schema validation fails.
+
+--------------------------------------------------
+11) Non-Functional Requirements (Updated)
+--------------------------------------------------
+NFR-01 Performance
+- P95 voice round-trip (user finishes speaking -> AI audio starts) <= 5.0s
+- P95 text turn response (fallback pipeline) <= 4.0s
+
+NFR-02 Strongly Typed Backend
+- Backend service must use a strongly-typed language.
+- All LLM output parsing must have schema validation.
+
+NFR-03 No LLM Keys in Client
+- API keys stay on backend.
+- TUI communicates with local or remote backend service.
+
+NFR-04 Audio Isolation
+- Push-to-talk implementation must avoid feedback loop
+  (mic should not capture AI speaker output during playback).
+
+--------------------------------------------------
+12) Open Decisions (Updated — see also open-decisions.txt)
+--------------------------------------------------
+D1. Which voice model to use for MVP?
+- Perplexity voice appears best for mispronunciation detection but API
+  access process is unclear. Needs investigation.
+
+D2. How to implement push-to-talk in TUI?
+- Likely keyboard key hold in terminal — feasibility needs a quick spike.
+
+D3. HSK vocabulary restriction: prompt-only or RAG-assisted?
+- Prompt-only may not reliably constrain ~600-word vocabulary.
+- RAG approach is worth prototyping alongside.
+
+D4. Backend language final choice?
+- Python (current prototype) vs Go or another strongly-typed option.
+
+D5. Voice-to-voice vs STT+TTS fallback for MVP?
+- Depends on Perplexity API access. Confirm before sprint planning.
+
+D6. Pronunciation tokenization (IPA approach)?
+- Experimental idea from call — feasibility unproven. Park for research spike.
+
+D7. HSK level target at launch: HSK1-2 only, or include HSK3?
+
+D8. Monetization at MVP: free private beta assumed.
+
+--------------------------------------------------
+13) Risks and Mitigations (Updated)
+--------------------------------------------------
+Risk: Voice model mispronunciation detection is unreliable
+- Mitigation: start with Perplexity voice; accept limited detection in early MVP.
+- Long-term: voice model capability will improve; architecture should be swappable.
+
+Risk: HSK vocabulary restriction fails in practice (model ignores constraint)
+- Mitigation: test prompt engineering approaches early; consider RAG or post-gen
+  vocabulary filter as backup.
+
+Risk: Audio feedback loop in TUI
+- Mitigation: require headphone use for now; implement push-to-talk properly.
+
+Risk: Scope creep from "just one more feature"
+- Mitigation: TUI MVP is intentionally minimal — validate voice + vocab loop first.
+
+Risk: LLM output schema inconsistency
+- Mitigation: strict schema validation + typed backend + fallback handling.
+
+--------------------------------------------------
+14) Recommended MVP Freeze (v0.2 Proposal)
+--------------------------------------------------
+- Platform: TUI (terminal)
+- Language: Mandarin Chinese, Simplified
+- Input: Voice (push-to-talk)
+- Output: Voice (AI audio response)
+- Model: Voice-to-voice (Perplexity voice preferred; GPT-4o Realtime fallback)
+- Vocabulary: HSK3 restriction (word list already created)
+- Scenarios: Free conversation (no structured scenario required for TUI MVP)
+- Beta: Private, free
+
+End of v0.2

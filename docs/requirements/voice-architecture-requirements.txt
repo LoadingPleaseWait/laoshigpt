@@ -1,0 +1,168 @@
+# Voice Architecture Requirements
+# Source: initial call recording (docs/initialcall.md)
+
+--------------------------------------------------
+1) Core Architecture Decision
+--------------------------------------------------
+Preferred: Voice-to-Voice (end-to-end multimodal)
+- Raw audio from user microphone is sent directly to a voice-capable LLM.
+- The model returns an audio response directly.
+- No intermediate transcription step.
+
+Why voice-to-voice:
+- Preserves all pronunciation information including tone, pitch, and accent.
+- Transcription (STT) would discard pronunciation variance — the thing we most
+  want to evaluate for a Mandarin learning app.
+- Mandarin is a tonal language; tone carries meaning. A model hearing the audio
+  directly can assess tonal accuracy. A text transcript cannot.
+
+Fallback: STT -> LLM -> TTS pipeline
+- Use only when a suitable voice-to-voice model is not accessible.
+- Accept that pronunciation detection capability is severely degraded.
+- This fallback is acceptable for an early prototype but not for the full product.
+
+--------------------------------------------------
+2) Model Selection Requirements
+--------------------------------------------------
+Required capabilities:
+- Multimodal audio input and audio output in a single model call.
+- Strong Mandarin Chinese language support.
+- Ability to detect and flag pronunciation errors / mispronunciation.
+
+Nice to have:
+- Emotion detection in voice (model can detect learner frustration or confusion).
+- Tonal accuracy scoring for Mandarin tones (1st/2nd/3rd/4th/neutral).
+- Low latency audio response (target: <= 2s to first audio byte).
+
+Current candidate models:
+1. Perplexity Voice
+   - Observed to detect pronunciation variance in testing.
+   - Only model team has seen successfully flag mispronunciation in Mandarin.
+   - Status: API access process unclear — needs investigation.
+   - Priority: investigate first.
+
+2. GPT-4o Advanced Voice / Realtime API
+   - Voice-to-voice capable.
+   - Does NOT reliably detect Mandarin mispronunciation in testing.
+   - Possible cause: overly encouraging system prompt defaults ("great
+     pronunciation!") regardless of actual accuracy.
+   - May be fixable with prompt engineering (remove encouragement, add
+     strict pronunciation evaluation instructions).
+   - Status: team has access, currently experimenting with OpenAI Realtime API.
+   - Role: current prototype vehicle; fallback if Perplexity unavailable.
+
+3. Chinese-specialized voice models
+   - A model trained specifically for Chinese / Mandarin might outperform
+     general-purpose Western LLMs for pronunciation assessment.
+   - Not yet identified — worth researching.
+
+--------------------------------------------------
+3) Push-to-Talk Requirement
+--------------------------------------------------
+Push-to-talk (PTT) is required for MVP.
+
+Reasons:
+- Learners need think-time to formulate responses in Mandarin.
+  Open-ended VAD (voice activity detection) cuts off the user too quickly.
+- Eliminates ambiguity about when the user has finished speaking.
+- Avoids AI responding to background noise or incomplete utterances.
+- Prevents audio feedback loop (see section 5).
+
+How Duolingo implements it (reference):
+- User taps button to start speaking.
+- User taps button again to stop.
+- Response can be as long as needed.
+- At end of session, Lily rates difficulty (too easy / too hard) and adjusts.
+
+TUI implementation:
+- Likely: hold a key (e.g., spacebar) to record, release to send.
+- Spike needed to confirm feasibility in terminal environment.
+
+--------------------------------------------------
+4) Pronunciation Detection — State of the Art
+--------------------------------------------------
+Current landscape (as of call date):
+- Mispronunciation detection in Mandarin is on the bleeding edge of AI capability.
+- General LLMs try hard to understand what the user MEANT to say — they
+  normalize away pronunciation errors rather than flagging them.
+- Emotion detection was an early marketed capability of voice models (OpenAI
+  advertised this for GPT-4o voice). This requires hearing actual audio, not text.
+- Tonal language understanding (Mandarin tones) is generally handled well
+  by modern LLMs — the model understands the correct tone, but this is different
+  from evaluating whether the user pronounced it correctly.
+
+Why detection is hard:
+- LLMs are optimized to understand intent, not to audit speech quality.
+- Training data likely does not include labeled examples of non-native speakers
+  mispronouncing specific words — so the model has no strong signal for "bad
+  pronunciation" vs "good pronunciation" of a non-native speaker.
+- The model may generously interpret garbled input as the closest valid word.
+
+Perplexity voice exception:
+- Appears to flag pronunciation variance where GPT-4o does not.
+- Hypothesis: Perplexity may use a different audio encoding or scoring layer
+  that preserves more phonetic detail before semantic normalization.
+
+Future outlook:
+- Voice-to-voice model mispronunciation detection will improve over time.
+- Architecture should be model-agnostic so we can swap in better models
+  as they become available (likely 1–2 year horizon for reliable detection).
+
+--------------------------------------------------
+5) Audio Feedback Loop — Known Issue
+--------------------------------------------------
+Problem:
+- When running on desktop without headphones, the AI audio plays through
+  speakers and is picked up by the computer microphone.
+- The model then hears and responds to its own output — causing a feedback loop.
+
+Mitigations:
+- Push-to-talk: mic is only active when user is intentionally recording.
+  This alone should largely solve the issue.
+- Headphones: eliminates speaker-to-mic bleed entirely.
+- Echo cancellation: some OS-level audio processing may help but not reliable.
+
+For TUI MVP: require push-to-talk + recommend headphone use in docs.
+
+--------------------------------------------------
+6) Experimental: IPA Pronunciation Tokenization
+--------------------------------------------------
+Idea discussed during call (not planned for MVP):
+- Instead of transcribing user speech to Chinese characters or Pinyin,
+  transcribe to International Phonetic Alphabet (IPA) symbols.
+- Feed IPA representation directly to the LLM.
+- Potentially include pitch/tone markers in the IPA encoding.
+- Rationale: preserves pronunciation nuance even without a voice-to-voice model.
+
+Why it is experimental / uncertain:
+- LLMs are not primarily trained on IPA input — unclear how well they interpret it.
+- LLM tokenizers convert input to embedding vectors; IPA symbols may not
+  have well-formed embeddings in standard model vocabularies.
+- Chain-of-thought reasoning from IPA phonetics to Mandarin semantic content
+  is a non-trivial inference task the model may not handle well.
+- Many implementation unknowns: what IPA library? How to capture pitch?
+  How to include tone markers?
+
+Status: Parked — worth a research spike but not on the MVP critical path.
+
+--------------------------------------------------
+7) Implementation Sequence (Recommended)
+--------------------------------------------------
+Phase 1 (MVP TUI)
+- Implement push-to-talk audio capture in terminal.
+- Integrate with GPT-4o Realtime API (team has access).
+- Accept limited pronunciation detection for now.
+- Validate conversation loop + HSK vocab constraint end-to-end.
+
+Phase 2 (Pronunciation)
+- Investigate Perplexity voice API access and pricing.
+- Prototype pronunciation detection with Perplexity.
+- Compare against GPT-4o with modified system prompt (remove encouragement).
+- Select model based on actual mispronunciation detection results.
+
+Phase 3 (Mobile)
+- Port voice pipeline to React Native mobile app.
+- Handle iOS/Android microphone permissions and audio session management.
+- Push-to-talk UI in mobile (tap-and-hold button).
+
+End of voice-architecture-requirements.txt

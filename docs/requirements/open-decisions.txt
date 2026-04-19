@@ -1,0 +1,105 @@
+# Open Decisions — Needs Team Alignment
+# Source: initial call recording (docs/initialcall.md)
+# Update this file as decisions are made.
+
+Format: [OPEN] = unresolved | [DECIDED] = resolved
+
+--------------------------------------------------
+TECHNICAL DECISIONS
+--------------------------------------------------
+
+[OPEN] D1: Which voice model for MVP?
+- Perplexity voice: best observed mispronunciation detection, API access unclear.
+- GPT-4o Advanced Voice / Realtime: team has access, but weak pronunciation detection.
+- Action: investigate Perplexity voice API access, pricing, and availability.
+  If accessible, prototype with Perplexity. Otherwise, use GPT-4o Realtime.
+
+[OPEN] D2: How to implement push-to-talk in TUI?
+- Likely: hold a key (e.g., spacebar) to record audio, release to send.
+- Needs a small spike to confirm this is feasible in a terminal environment.
+- Action: prototype PTT audio capture in terminal this week.
+
+[OPEN] D3: HSK vocabulary restriction — prompt-only or RAG-assisted?
+- Option A: system prompt injection with HSK word list.
+  - Risk: model may ignore or bypass constraint, especially for long lists.
+  - HSK3 is ~600 words — fits in context window but needs testing.
+- Option B: RAG — provide example sentences from allowed vocabulary to guide output.
+- Option C: hybrid — prompt + post-generation vocabulary check.
+- Action: test prompt-only first with HSK3 list; measure compliance rate.
+
+[OPEN] D4: Backend language final choice?
+- Team agreed: strongly-typed language required. No JavaScript. TypeScript rejected.
+- Current prototype: Python (with type annotations via Pydantic, etc.)
+- Alternatives: Go, Rust, or others.
+- Action: decide whether to continue Python or switch before starting backend build.
+
+[DECIDED] D5: Voice-to-voice vs STT+TTS for architecture preference?
+- DECISION: Voice-to-voice preferred for pronunciation preservation.
+- Fallback to STT+TTS only if voice model access is blocked.
+- Details: see voice-architecture-requirements.txt
+
+[DECIDED] D6: MVP platform?
+- DECISION: TUI (terminal user interface) for MVP.
+- Mobile app (React Native) is post-MVP, designed in Figma first.
+
+[DECIDED] D7: Target language for MVP?
+- DECISION: Mandarin Chinese, Simplified script only.
+- "Chinese" is ambiguous — use "Mandarin" in all communications going forward.
+
+[DECIDED] D8: Frontend framework for post-MVP mobile?
+- DECISION: React Native (cross-platform iOS/Android).
+- UI design in Figma before build.
+
+[OPEN] D9: IPA pronunciation tokenization — pursue or park?
+- Experimental idea: transcribe user speech to IPA symbols to preserve
+  pronunciation even in non-voice-to-voice pipeline.
+- Feasibility uncertain: LLMs may not interpret IPA well, tokenization issues.
+- Action: park for now. Revisit only if voice-to-voice model access fails.
+
+[OPEN] D10: Which Chinese AI model to consider for Mandarin-specific tasks?
+- Hypothesis: a model trained primarily on Chinese data may outperform
+  Western-centric LLMs for Mandarin pronunciation assessment.
+- Referenced in call but no specific model named.
+- Action: research Chinese-origin multimodal voice models (e.g., from Baidu, Alibaba,
+  or others) and evaluate for pronunciation detection capability.
+
+--------------------------------------------------
+PRODUCT DECISIONS
+--------------------------------------------------
+
+[OPEN] D11: HSK level range at launch?
+- Option A: HSK1 only (narrowest scope, easiest to validate)
+- Option B: HSK1–2
+- Option C: HSK1–3 (HSK3 spreadsheet already created)
+- Recommendation from call: HSK3 spreadsheet exists, so support up to HSK3.
+
+[DECIDED] D12: Monetization for MVP?
+- DECISION: Free private beta.
+
+[OPEN] D13: Session structure — free conversation or scenario-based?
+- For TUI MVP, free conversation (no structured scenario) is simplest.
+- Scenarios (restaurant, directions, etc.) are well-defined in v0.1 but may
+  be unnecessary complexity for TUI prototype.
+- Action: confirm whether TUI MVP is free conversation only or includes scenarios.
+
+[OPEN] D14: Duolingo differentiation — is bilingual coaching in scope for MVP?
+- Duolingo's Lily only speaks target language. We can offer English coaching too.
+- Is this a v1 MVP feature or post-MVP?
+- Leaning toward: include bilingual mode in MVP since it is a key differentiator.
+
+--------------------------------------------------
+PROCESS / COLLABORATION DECISIONS
+--------------------------------------------------
+
+[DECIDED] D15: Development approach?
+- DECISION: AI agent-assisted development.
+- Use an AI coding agent to handle boilerplate, project setup, and scaffolding.
+- Human reviews agent output and redirects as needed.
+- Goal: skip the painful parts of setup and get to meaningful code faster.
+
+[OPEN] D16: Who does what?
+- From call: one person will run agent + prototype; other will review output
+  and provide architectural direction / feedback.
+- Needs explicit role definition as work begins.
+
+End of open-decisions.txt
