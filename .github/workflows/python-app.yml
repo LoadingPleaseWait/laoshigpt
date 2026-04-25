@@ -25,6 +25,7 @@ jobs:
         python-version: "3.12.3"
     - name: Install dependencies
       run: |
+        sudo apt install portaudio19-dev # needed by PyAudio
         python3 -m pip install --upgrade pip
         pip install flake8 pytest
         if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
