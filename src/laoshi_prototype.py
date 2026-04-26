@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import base64
 import asyncio
+import time
 from typing import Any, cast
 from typing_extensions import override
 
@@ -64,7 +65,7 @@ class AudioStatusIndicator(Static):
     @override
     def render(self) -> str:
         status = (
-            "🔴 Recording... (Press K to stop)" if self.is_recording else "⚪ Press K to start recording (Q to quit)"
+            "🔴 Recording... (Press Q to quit)" if self.is_recording else "⚪ Press the spacebar to start recording (Q to quit)"
         )
         return status
 
@@ -129,6 +130,7 @@ class RealtimeApp(App[None]):
 
     client: AsyncOpenAI
     should_send_audio: asyncio.Event
+    record_button_timestamp: float
     audio_player: AudioPlayerAsync
     last_audio_item_id: str | None
     connection: AsyncRealtimeConnection | None
@@ -143,6 +145,7 @@ class RealtimeApp(App[None]):
         self.audio_player = AudioPlayerAsync()
         self.last_audio_item_id = None
         self.should_send_audio = asyncio.Event()
+        self.record_button_timestamp = 0
         self.connected = asyncio.Event()
 
     @override
@@ -272,21 +275,28 @@ class RealtimeApp(App[None]):
 
     async def on_key(self, event: events.Key) -> None:
         """Handle key press events."""
-        if event.key == "enter":
-            self.query_one(Button).press()
-            return
+        #if event.key == "enter":
+        #    self.query_one(Button).press()
+        #    return
 
         if event.key == "q":
             self.exit()
             return
 
-        if event.key == "k":
+        if event.key == "space" and time.time() > self.record_button_timestamp + 0.3:
+            # The user has pressed space (and it's been at least a split second since they last pressed it.
+            # This prevents this method from getting called over and over as the user has not yet release the
+            # spacebar.
+            self.record_button_timestamp = time.time()
             status_indicator = self.query_one(AudioStatusIndicator)
             if status_indicator.is_recording:
-                self.should_send_audio.clear()
+                await asyncio.sleep(0.35) # Give the LLM time to send a response
                 status_indicator.is_recording = False
+                await self.should_send_audio.wait()
+                self.should_send_audio.clear()
 
-                if self.session and self.session.turn_detection is None:
+                if self.session and self.session.audio and self.session.audio.input \
+                        and self.session.audio.input.turn_detection is None:
                     # The default in the API is that the model will automatically detect when the user has
                     # stopped talking and then start responding itself.
                     #
