@@ -1,4 +1,4 @@
-LaoShiGPT
+LaoshiGPT
 ---------
 
 An AI-based language learning app.
