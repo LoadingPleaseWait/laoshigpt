@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import os
 
 import streamlit as st
@@ -33,6 +34,8 @@ def render_messages() -> None:
     for message in st.session_state.messages:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
+            if message["role"] == "assistant" and message.get("audio_b64"):
+                st.audio(base64.b64decode(message["audio_b64"]), format="audio/mp3")
 
 
 def transcribe_audio(client: OpenAI, audio_bytes: bytes) -> str:
@@ -53,6 +56,19 @@ def respond(client: OpenAI) -> str:
         temperature=0.5,
     )
     return completion.choices[0].message.content or ""
+
+
+def text_to_speech(client: OpenAI, text: str) -> bytes | None:
+    try:
+        speech = client.audio.speech.create(
+            model="gpt-4o-mini-tts",
+            voice="alloy",
+            input=text,
+            response_format="mp3",
+        )
+        return speech.read()
+    except Exception:
+        return None
 
 
 def main() -> None:
@@ -84,9 +100,18 @@ def main() -> None:
 
         with st.spinner("Laoshi is responding..."):
             assistant_text = respond(client)
-        st.session_state.messages.append({"role": "assistant", "content": assistant_text})
+        speech_bytes = text_to_speech(client, assistant_text)
+        assistant_message = {"role": "assistant", "content": assistant_text}
+        if speech_bytes is not None:
+            assistant_message["audio_b64"] = base64.b64encode(speech_bytes).decode("utf-8")
+
+        st.session_state.messages.append(assistant_message)
         with st.chat_message("assistant"):
             st.markdown(assistant_text)
+            if speech_bytes is not None:
+                st.audio(speech_bytes, format="audio/mp3")
+            else:
+                st.caption("(Audio playback unavailable for this response)")
 
     prompt = st.chat_input("Type your message")
     if prompt:
@@ -96,9 +121,18 @@ def main() -> None:
 
         with st.spinner("Laoshi is responding..."):
             assistant_text = respond(client)
-        st.session_state.messages.append({"role": "assistant", "content": assistant_text})
+        speech_bytes = text_to_speech(client, assistant_text)
+        assistant_message = {"role": "assistant", "content": assistant_text}
+        if speech_bytes is not None:
+            assistant_message["audio_b64"] = base64.b64encode(speech_bytes).decode("utf-8")
+
+        st.session_state.messages.append(assistant_message)
         with st.chat_message("assistant"):
             st.markdown(assistant_text)
+            if speech_bytes is not None:
+                st.audio(speech_bytes, format="audio/mp3")
+            else:
+                st.caption("(Audio playback unavailable for this response)")
 
 
 if __name__ == "__main__":
