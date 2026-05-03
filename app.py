@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 import os
 
 import streamlit as st
-from openai import OpenAI
+from openai import AsyncOpenAI, OpenAI
 
-MODEL_NAME = "gpt-4o-mini"
+MODEL_NAME = "gpt-realtime-1.5"
 
 LAOSHI_INSTRUCTIONS = """You are an interactive Chinese language tutor.
 Start by asking in English about level, goals, target Sinitic language,
@@ -46,16 +47,51 @@ def transcribe_audio(client: OpenAI, audio_bytes: bytes) -> str:
     return result.text
 
 
-def respond(client: OpenAI) -> str:
-    completion = client.chat.completions.create(
-        model=MODEL_NAME,
-        messages=[
-            {"role": "system", "content": LAOSHI_INSTRUCTIONS},
-            *st.session_state.messages,
-        ],
-        temperature=0.5,
+def _build_history_prompt() -> str:
+    lines: list[str] = []
+    for message in st.session_state.messages:
+        role = message["role"].capitalize()
+        lines.append(f"{role}: {message['content']}")
+    return "\n".join(lines)
+
+
+async def _respond_realtime(rt_client: AsyncOpenAI) -> str:
+    history = _build_history_prompt()
+    prompt = (
+        "Continue this tutoring conversation naturally and respond as the assistant.\n\n"
+        f"Conversation so far:\n{history}"
     )
-    return completion.choices[0].message.content or ""
+
+    async with rt_client.realtime.connect(model=MODEL_NAME) as connection:
+        await connection.session.update(
+            session={
+                "output_modalities": ["text"],
+                "instructions": LAOSHI_INSTRUCTIONS,
+                "model": MODEL_NAME,
+                "type": "realtime",
+            }
+        )
+        await connection.conversation.item.create(
+            item={
+                "type": "message",
+                "role": "user",
+                "content": [{"type": "input_text", "text": prompt}],
+            }
+        )
+        await connection.response.create()
+
+        parts: list[str] = []
+        async for event in connection:
+            if event.type == "response.output_text.delta":
+                parts.append(event.delta)
+            elif event.type == "response.done":
+                break
+
+    return "".join(parts).strip()
+
+
+def respond(rt_client: AsyncOpenAI) -> str:
+    return asyncio.run(_respond_realtime(rt_client))
 
 
 def text_to_speech(client: OpenAI, text: str) -> bytes | None:
@@ -81,6 +117,7 @@ def main() -> None:
         st.stop()
 
     client = OpenAI()
+    rt_client = AsyncOpenAI()
     init_state()
 
     if st.button("Reset chat"):
@@ -99,7 +136,7 @@ def main() -> None:
             st.markdown(user_text)
 
         with st.spinner("Laoshi is responding..."):
-            assistant_text = respond(client)
+            assistant_text = respond(rt_client)
         speech_bytes = text_to_speech(client, assistant_text)
         assistant_message = {"role": "assistant", "content": assistant_text}
         if speech_bytes is not None:
@@ -120,7 +157,7 @@ def main() -> None:
             st.markdown(prompt)
 
         with st.spinner("Laoshi is responding..."):
-            assistant_text = respond(client)
+            assistant_text = respond(rt_client)
         speech_bytes = text_to_speech(client, assistant_text)
         assistant_message = {"role": "assistant", "content": assistant_text}
         if speech_bytes is not None:
