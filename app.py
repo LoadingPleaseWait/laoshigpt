@@ -5,9 +5,12 @@ from __future__ import annotations
 import asyncio
 import base64
 import os
+import wave
+from io import BytesIO
 
 import streamlit as st
-from openai import AsyncOpenAI, OpenAI
+from openai import AsyncOpenAI
+from src.audio_util import CHANNELS, SAMPLE_RATE, audio_to_pcm16_base64
 
 MODEL_NAME = "gpt-realtime-1.5"
 
@@ -36,15 +39,7 @@ def render_messages() -> None:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
             if message["role"] == "assistant" and message.get("audio_b64"):
-                st.audio(base64.b64decode(message["audio_b64"]), format="audio/mp3")
-
-
-def transcribe_audio(client: OpenAI, audio_bytes: bytes) -> str:
-    result = client.audio.transcriptions.create(
-        model="gpt-4o-mini-transcribe",
-        file=("input.wav", audio_bytes, "audio/wav"),
-    )
-    return result.text
+                st.audio(base64.b64decode(message["audio_b64"]), format="audio/wav")
 
 
 def _build_history_prompt() -> str:
@@ -94,17 +89,59 @@ def respond(rt_client: AsyncOpenAI) -> str:
     return asyncio.run(_respond_realtime(rt_client))
 
 
-def text_to_speech(client: OpenAI, text: str) -> bytes | None:
-    try:
-        speech = client.audio.speech.create(
-            model="gpt-4o-mini-tts",
-            voice="alloy",
-            input=text,
-            response_format="mp3",
+def pcm16_to_wav_bytes(pcm_data: bytes) -> bytes:
+    buffer = BytesIO()
+    with wave.open(buffer, "wb") as wav_file:
+        wav_file.setnchannels(CHANNELS)
+        wav_file.setsampwidth(2)
+        wav_file.setframerate(SAMPLE_RATE)
+        wav_file.writeframes(pcm_data)
+    return buffer.getvalue()
+
+
+async def _respond_realtime_audio(rt_client: AsyncOpenAI, recorded_audio_bytes: bytes) -> tuple[str, bytes | None]:
+    history = _build_history_prompt()
+    pcm_bytes = audio_to_pcm16_base64(recorded_audio_bytes)
+    history_context = f"\n\nConversation so far:\n{history}" if history else ""
+
+    async with rt_client.realtime.connect(model=MODEL_NAME) as connection:
+        await connection.session.update(
+            session={
+                "instructions": f"{LAOSHI_INSTRUCTIONS}{history_context}",
+                "model": MODEL_NAME,
+                "type": "realtime",
+                "output_modalities": ["audio", "text"],
+                "audio": {"input": {"turn_detection": None}},
+            }
         )
-        return speech.read()
-    except Exception:
-        return None
+
+        await connection.input_audio_buffer.append(audio=base64.b64encode(pcm_bytes).decode("utf-8"))
+        await connection.input_audio_buffer.commit()
+        await connection.response.create()
+
+        text_parts: list[str] = []
+        audio_parts: list[bytes] = []
+        async for event in connection:
+            if event.type == "response.output_audio_transcript.delta":
+                text_parts.append(event.delta)
+            elif event.type == "response.output_text.delta":
+                text_parts.append(event.delta)
+            elif event.type == "response.output_audio.delta":
+                audio_parts.append(base64.b64decode(event.delta))
+            elif event.type == "response.done":
+                break
+
+    assistant_text = "".join(text_parts).strip()
+    if not assistant_text:
+        assistant_text = "(No transcript returned)"
+
+    if audio_parts:
+        return assistant_text, pcm16_to_wav_bytes(b"".join(audio_parts))
+    return assistant_text, None
+
+
+def respond_with_audio(rt_client: AsyncOpenAI, recorded_audio_bytes: bytes) -> tuple[str, bytes | None]:
+    return asyncio.run(_respond_realtime_audio(rt_client, recorded_audio_bytes))
 
 
 def main() -> None:
@@ -116,7 +153,6 @@ def main() -> None:
         st.error("Please set OPENAI_API_KEY before running this app.")
         st.stop()
 
-    client = OpenAI()
     rt_client = AsyncOpenAI()
     init_state()
 
@@ -129,15 +165,14 @@ def main() -> None:
 
     audio_input = st.audio_input("Optional: record a message")
     if audio_input is not None:
-        with st.spinner("Transcribing..."):
-            user_text = transcribe_audio(client, audio_input.read())
+        audio_bytes = audio_input.read()
+        user_text = "(Voice message)"
         st.session_state.messages.append({"role": "user", "content": user_text})
         with st.chat_message("user"):
             st.markdown(user_text)
 
         with st.spinner("Laoshi is responding..."):
-            assistant_text = respond(rt_client)
-        speech_bytes = text_to_speech(client, assistant_text)
+            assistant_text, speech_bytes = respond_with_audio(rt_client, audio_bytes)
         assistant_message = {"role": "assistant", "content": assistant_text}
         if speech_bytes is not None:
             assistant_message["audio_b64"] = base64.b64encode(speech_bytes).decode("utf-8")
@@ -146,7 +181,7 @@ def main() -> None:
         with st.chat_message("assistant"):
             st.markdown(assistant_text)
             if speech_bytes is not None:
-                st.audio(speech_bytes, format="audio/mp3")
+                st.audio(speech_bytes, format="audio/wav")
             else:
                 st.caption("(Audio playback unavailable for this response)")
 
@@ -158,18 +193,11 @@ def main() -> None:
 
         with st.spinner("Laoshi is responding..."):
             assistant_text = respond(rt_client)
-        speech_bytes = text_to_speech(client, assistant_text)
         assistant_message = {"role": "assistant", "content": assistant_text}
-        if speech_bytes is not None:
-            assistant_message["audio_b64"] = base64.b64encode(speech_bytes).decode("utf-8")
 
         st.session_state.messages.append(assistant_message)
         with st.chat_message("assistant"):
             st.markdown(assistant_text)
-            if speech_bytes is not None:
-                st.audio(speech_bytes, format="audio/mp3")
-            else:
-                st.caption("(Audio playback unavailable for this response)")
 
 
 if __name__ == "__main__":
