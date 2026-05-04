@@ -39,7 +39,7 @@ def render_messages() -> None:
         with st.chat_message(message["role"]):
             st.markdown(message["content"])
             if message["role"] == "assistant" and message.get("audio_b64"):
-                st.audio(base64.b64decode(message["audio_b64"]), format="audio/wav")
+                st.audio(base64.b64decode(message["audio_b64"]), format="audio/wav", autoplay=True)
 
 
 def _build_history_prompt() -> str:
@@ -200,7 +200,7 @@ def main() -> None:
         with st.chat_message("assistant"):
             st.markdown(assistant_text)
             if speech_bytes is not None:
-                st.audio(speech_bytes, format="audio/wav")
+                st.audio(speech_bytes, format="audio/wav", autoplay=True)
             else:
                 st.caption("(Audio playback unavailable for this response)")
 
