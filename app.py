@@ -23,6 +23,11 @@ For Mandarin transcriptions use Traditional Chinese + Hanyu Pinyin unless asked 
 For Cantonese transcriptions use Traditional Chinese + Jyutping unless asked otherwise.
 """
 
+FOLLOWUP_INSTRUCTIONS = """You are in an ongoing conversation.
+Use the provided conversation history and continue naturally.
+Do not re-introduce yourself or re-ask onboarding questions unless the user asks to restart.
+"""
+
 
 def init_state() -> None:
     if "messages" not in st.session_state:
@@ -64,11 +69,17 @@ async def _respond_realtime_audio(rt_client: AsyncOpenAI, recorded_audio_bytes: 
     history = _build_history_prompt()
     pcm_bytes = audio_to_pcm16_base64(recorded_audio_bytes)
     history_context = f"\n\nConversation so far:\n{history}" if history else ""
+    has_user_history = any(message.get("role") == "user" for message in st.session_state.messages)
+
+    if has_user_history:
+        instructions = f"{LAOSHI_INSTRUCTIONS}\n\n{FOLLOWUP_INSTRUCTIONS}{history_context}"
+    else:
+        instructions = f"{LAOSHI_INSTRUCTIONS}{history_context}"
 
     async with rt_client.realtime.connect(model=MODEL_NAME) as connection:
         await connection.session.update(
             session={
-                "instructions": f"{LAOSHI_INSTRUCTIONS}{history_context}",
+                "instructions": instructions,
                 "model": MODEL_NAME,
                 "type": "realtime",
                 "output_modalities": ["audio"],
@@ -185,10 +196,10 @@ def main() -> None:
     audio_input = st.audio_input("Record your message")
     if audio_input is not None:
         audio_bytes = audio_input.read()
-        # user_text = "(Voice message)"
-        # st.session_state.messages.append({"role": "user", "content": user_text})
-        # with st.chat_message("user"):
-        #     st.markdown(user_text)
+        user_text = "🎤 Voice message"
+        st.session_state.messages.append({"role": "user", "content": user_text})
+        with st.chat_message("user"):
+            st.markdown(user_text)
 
         with st.spinner("Laoshi is responding..."):
             assistant_text, speech_bytes = respond_with_audio(rt_client, audio_bytes)
