@@ -83,6 +83,7 @@ async def _respond_realtime_audio(rt_client: AsyncOpenAI, recorded_audio_bytes: 
 
         text_parts: list[str] = []
         audio_parts: list[bytes] = []
+        saw_audio_transcript_delta = False
 
         def _append_if_text(value: object) -> None:
             if isinstance(value, str) and value.strip():
@@ -90,6 +91,11 @@ async def _respond_realtime_audio(rt_client: AsyncOpenAI, recorded_audio_bytes: 
 
         def _extract_from_response_done(event: object) -> None:
             """Best-effort fallback extraction for SDK event-shape differences."""
+            # If we already captured streaming deltas, don't append done-level content,
+            # which can duplicate the same assistant text.
+            if text_parts or audio_parts:
+                return
+
             response = getattr(event, "response", None)
             outputs = getattr(response, "output", None)
             if not outputs:
@@ -117,9 +123,13 @@ async def _respond_realtime_audio(rt_client: AsyncOpenAI, recorded_audio_bytes: 
             event_type = getattr(event, "type", "")
 
             if event_type.endswith("output_audio_transcript.delta"):
+                saw_audio_transcript_delta = True
                 _append_if_text(getattr(event, "delta", None))
             elif event_type.endswith("output_text.delta"):
-                _append_if_text(getattr(event, "delta", None))
+                # Some models emit both transcript and text deltas with duplicated content.
+                # Prefer transcript deltas when present to avoid doubled output.
+                if not saw_audio_transcript_delta:
+                    _append_if_text(getattr(event, "delta", None))
             elif event_type.endswith("output_audio.delta"):
                 delta = getattr(event, "delta", None)
                 if isinstance(delta, str):
