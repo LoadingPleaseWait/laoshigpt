@@ -191,9 +191,6 @@ def main() -> None:
         init_state()
         st.rerun()
 
-    if st.button("Reset recorder", help="If Firefox microphone capture glitches, click this instead of refreshing the whole page."):
-        st.rerun()
-
     render_messages()
 
     audio_input = st.audio_input("Record your message")
