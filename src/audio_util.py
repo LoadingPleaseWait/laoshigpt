@@ -1,4 +1,4 @@
-# This file is from OpenAI and it has not been modified
+# This file was from OpenAI but it has been modified
 
 from __future__ import annotations
 
