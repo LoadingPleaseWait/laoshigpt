@@ -12,7 +12,7 @@ import streamlit as st
 from openai import AsyncOpenAI
 from src.audio_util import CHANNELS, SAMPLE_RATE, audio_to_pcm16_base64
 
-MODEL_NAME = "gpt-realtime-mini"
+MODEL_NAME = "gpt-realtime-1.5"
 
 LAOSHI_INSTRUCTIONS = """You are an interactive Chinese language tutor. When the session starts,
 in English, ask which Sinitic language the student would like to practice, what the student's current
