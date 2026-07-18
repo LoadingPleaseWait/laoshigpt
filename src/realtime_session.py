@@ -211,6 +211,10 @@ class StreamlitRealtimeSession:
             raise
         except Exception as exc:
             self._queue_stream_result(RealtimeTurnResult("".join(user_text_parts).strip(), "", None, str(exc)))
+            try:
+                await self._close_async()
+            except Exception:
+                pass
         finally:
             self._streaming = False
             with self._get_stream_lock():
@@ -316,12 +320,17 @@ class StreamlitRealtimeSession:
         return RealtimeTurnResult(user_text, assistant_text, assistant_audio)
 
     async def _close_async(self) -> None:
-        if self._connection is not None:
-            await self._connection.close()
-            self._connection = None
-        if self._client is not None:
-            await self._client.close()
-            self._client = None
+        connection = self._connection
+        client = self._client
+        self._connection = None
+        self._client = None
+
+        try:
+            if connection is not None:
+                await connection.close()
+        finally:
+            if client is not None:
+                await client.close()
 
     @staticmethod
     def _append_text(parts: list[str], value: object) -> None:

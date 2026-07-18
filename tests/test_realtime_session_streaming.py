@@ -93,6 +93,13 @@ def test_stop_streaming_clears_buffered_pending_audio():
 
 
 def test_failed_stream_queues_error_and_clears_stream_state():
+    class FakeCloser:
+        def __init__(self) -> None:
+            self.closed = False
+
+        async def close(self) -> None:
+            self.closed = True
+
     session = StreamlitRealtimeSession.__new__(StreamlitRealtimeSession)
     session._stream_results = []
     session._stream_lock = None
@@ -101,6 +108,10 @@ def test_failed_stream_queues_error_and_clears_stream_state():
     session._streaming = True
     session._stream_task = Future()
     session._closed = False
+    connection = FakeCloser()
+    client = FakeCloser()
+    session._connection = connection
+    session._client = client
 
     async def fail_to_connect():
         raise RuntimeError("connection failed")
@@ -116,3 +127,7 @@ def test_failed_stream_queues_error_and_clears_stream_state():
     assert session._stream_task is None
     assert session._stream_audio_queue == []
     assert session._stream_pending_audio == b""
+    assert session._connection is None
+    assert session._client is None
+    assert connection.closed
+    assert client.closed
