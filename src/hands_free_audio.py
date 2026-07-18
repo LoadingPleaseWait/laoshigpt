@@ -36,6 +36,8 @@ class HandsFreeAudioBridge:
     def set_paused(self, paused: bool) -> None:
         with self._lock:
             self._paused = paused
+            if paused:
+                self._chunks = []
 
     def set_stopped(self, stopped: bool) -> None:
         with self._lock:

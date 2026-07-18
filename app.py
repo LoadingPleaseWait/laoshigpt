@@ -41,6 +41,8 @@ def render_messages() -> None:
             st.markdown(message["content"])
             if message["role"] == "assistant" and message.get("audio_b64"):
                 st.audio(base64.b64decode(message["audio_b64"]), format="audio/wav", autoplay=True)
+            elif message["role"] == "assistant" and message.get("audio_unavailable"):
+                st.caption("(Audio playback unavailable for this response)")
 
 
 def pcm16_to_wav_bytes(pcm_data: bytes) -> bytes:
@@ -79,6 +81,8 @@ def append_turn_result(result) -> None:
     if speech_bytes is not None:
         assistant_message["audio_b64"] = base64.b64encode(speech_bytes).decode("utf-8")
         st.session_state.hands_free_resume_at = time.time() + pcm16_duration_seconds(result.assistant_audio) + 0.25
+    elif not result.error:
+        assistant_message["audio_unavailable"] = True
 
     st.session_state.messages.append(assistant_message)
 

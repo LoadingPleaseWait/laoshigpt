@@ -17,6 +17,15 @@ def test_bridge_drops_audio_while_paused():
     assert bridge.pop_pcm16_chunks() == []
 
 
+def test_bridge_pausing_clears_queued_audio():
+    bridge = HandsFreeAudioBridge()
+    bridge.push_pcm16(b"\x01\x00" * 2400)
+
+    bridge.set_paused(True)
+
+    assert bridge.pop_pcm16_chunks() == []
+
+
 def test_bridge_returns_chunks_and_clears_queue():
     bridge = HandsFreeAudioBridge()
     first = b"\x01\x00" * 1200
