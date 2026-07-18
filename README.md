@@ -9,7 +9,7 @@ AI-based Chinese tutoring app with two interfaces:
 
 ## 1) Prerequisites
 
-- Python **3.9+**
+- Python **3.10+**
 - An OpenAI API key
 
 Set your API key in the shell before running either app:
