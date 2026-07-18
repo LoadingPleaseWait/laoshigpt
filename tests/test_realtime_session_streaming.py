@@ -74,6 +74,30 @@ def test_stop_streaming_waits_for_task_before_restart():
     assert session._stream_task is submitted_tasks[0]
 
 
+def test_stop_streaming_timeout_keeps_task_and_blocks_restart():
+    class TimeoutFuture(Future[None]):
+        def result(self, timeout=None):
+            raise TimeoutError
+
+    session = StreamlitRealtimeSession.__new__(StreamlitRealtimeSession)
+    session._stream_lock = None
+    session._stream_audio_queue = []
+    session._stream_pending_audio = b""
+    session._closed = False
+    session._streaming = True
+    session._thread = object()
+    running_task = TimeoutFuture()
+    session._stream_task = running_task
+
+    session.stop_streaming()
+
+    with patch("src.realtime_session.asyncio.run_coroutine_threadsafe") as start_task:
+        session.start_streaming()
+
+    assert session._stream_task is running_task
+    start_task.assert_not_called()
+
+
 def test_stop_streaming_clears_buffered_pending_audio():
     session = StreamlitRealtimeSession.__new__(StreamlitRealtimeSession)
     session._stream_lock = None

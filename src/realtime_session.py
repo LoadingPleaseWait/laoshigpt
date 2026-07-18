@@ -100,11 +100,7 @@ class StreamlitRealtimeSession:
             try:
                 stream_task.result(timeout=5)
             except TimeoutError:
-                stream_task.cancel()
-                try:
-                    stream_task.result(timeout=5)
-                except (concurrent.futures.CancelledError, TimeoutError):
-                    pass
+                return
             except concurrent.futures.CancelledError:
                 pass
         if stream_task.done():
