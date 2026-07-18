@@ -33,6 +33,8 @@ def init_state() -> None:
         st.session_state.hands_free_active = False
     if "hands_free_resume_at" not in st.session_state:
         st.session_state.hands_free_resume_at = 0.0
+    if "hands_free_webrtc_key" not in st.session_state:
+        st.session_state.hands_free_webrtc_key = 0
 
 
 def render_messages() -> None:
@@ -93,6 +95,7 @@ def reset_chat() -> None:
         bridge.set_stopped(True)
     st.session_state.hands_free_active = False
     st.session_state.hands_free_resume_at = 0.0
+    st.session_state.hands_free_webrtc_key += 1
     session = st.session_state.pop("realtime_session", None)
     if isinstance(session, StreamlitRealtimeSession):
         session.close()
@@ -113,7 +116,7 @@ def render_hands_free_controls() -> None:
         return frame
 
     ctx = webrtc_streamer(
-        key="laoshi_hands_free",
+        key=f"laoshi_hands_free_{st.session_state.hands_free_webrtc_key}",
         mode=WebRtcMode.SENDONLY,
         audio_frame_callback=audio_frame_callback,
         media_stream_constraints={"video": False, "audio": True},
