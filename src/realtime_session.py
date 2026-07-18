@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import concurrent.futures
 import threading
 from dataclasses import dataclass
 
@@ -41,11 +42,12 @@ class StreamlitRealtimeSession:
         self._stream_lock = threading.Lock()
         self._stream_pending_audio = b""
         self._streaming = False
-        self._stream_task: asyncio.Future[None] | None = None
+        self._stream_task: concurrent.futures.Future[None] | None = None
 
     def submit_audio(self, pcm_bytes: bytes) -> RealtimeTurnResult:
         if self._closed:
             return RealtimeTurnResult("", "", None, "Realtime session is closed.")
+        self.stop_streaming()
         if len(pcm_bytes) < MIN_INPUT_AUDIO_BYTES:
             return RealtimeTurnResult(
                 "",
@@ -84,6 +86,19 @@ class StreamlitRealtimeSession:
         with self._get_stream_lock():
             self._stream_audio_queue = []
             self._stream_pending_audio = b""
+
+        stream_task = getattr(self, "_stream_task", None)
+        if stream_task is None or stream_task.done():
+            self._stream_task = None
+            return
+
+        stream_task.cancel()
+        if threading.current_thread() is not getattr(self, "_thread", None):
+            try:
+                stream_task.result(timeout=5)
+            except (concurrent.futures.CancelledError, TimeoutError):
+                pass
+        self._stream_task = None
 
     def _queue_stream_result(self, result: RealtimeTurnResult) -> None:
         with self._get_stream_lock():
@@ -190,15 +205,15 @@ class StreamlitRealtimeSession:
             chunks = self._stream_audio_queue
             self._stream_audio_queue = []
 
-        if not chunks:
-            return
+            if not chunks:
+                return
 
-        pending_audio = getattr(self, "_stream_pending_audio", b"") + b"".join(chunks)
-        if len(pending_audio) < MIN_INPUT_AUDIO_BYTES:
-            self._stream_pending_audio = pending_audio
-            return
+            pending_audio = getattr(self, "_stream_pending_audio", b"") + b"".join(chunks)
+            if len(pending_audio) < MIN_INPUT_AUDIO_BYTES:
+                self._stream_pending_audio = pending_audio
+                return
 
-        self._stream_pending_audio = b""
+            self._stream_pending_audio = b""
         audio_b64 = base64.b64encode(pending_audio).decode("utf-8")
         await connection.input_audio_buffer.append(audio=audio_b64)
 
