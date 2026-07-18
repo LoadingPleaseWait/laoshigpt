@@ -65,7 +65,7 @@ def get_realtime_session() -> StreamlitRealtimeSession:
     return session
 
 
-def append_turn_result(result) -> None:
+def append_turn_result(result, *, hands_free: bool = False) -> None:
     user_text = result.user_text or "Voice message"
     st.session_state.messages.append({"role": "user", "content": user_text})
 
@@ -76,6 +76,13 @@ def append_turn_result(result) -> None:
         stale_session = st.session_state.pop("realtime_session", None)
         if isinstance(stale_session, StreamlitRealtimeSession):
             stale_session.close()
+        if hands_free:
+            bridge = st.session_state.get("hands_free_bridge")
+            if isinstance(bridge, HandsFreeAudioBridge):
+                bridge.set_stopped(True)
+            st.session_state.hands_free_active = False
+            st.session_state.hands_free_webrtc_key += 1
+            st.session_state.hands_free_resume_at = 0.0
     elif result.assistant_audio is not None:
         speech_bytes = pcm16_to_wav_bytes(result.assistant_audio)
 
@@ -129,10 +136,21 @@ def render_hands_free_controls() -> None:
 
     if active:
         session.start_streaming()
-        st.info("Listening")
+        if time.time() < st.session_state.hands_free_resume_at:
+            st.caption("Assistant speaking")
+        else:
+            st.info("Listening")
     else:
         session.stop_streaming()
         st.caption("Stopped")
+
+    last_message = st.session_state.messages[-1] if st.session_state.messages else None
+    if (
+        isinstance(last_message, dict)
+        and last_message.get("role") == "assistant"
+        and str(last_message.get("content", "")).startswith("(Realtime API error:")
+    ):
+        st.caption("Realtime API error")
 
 
 @st.fragment(run_every="500ms")
@@ -151,7 +169,7 @@ def poll_hands_free_turns() -> None:
     result = session.poll_stream_result()
     if result is not None:
         bridge.set_paused(True)
-        append_turn_result(result)
+        append_turn_result(result, hands_free=True)
         st.rerun()
 
 
@@ -174,7 +192,8 @@ def main() -> None:
     render_hands_free_controls()
     poll_hands_free_turns()
 
-    audio_input = st.audio_input("Record your message", key=f"audio_input_{st.session_state.audio_input_key}")
+    with st.expander("Manual recording fallback"):
+        audio_input = st.audio_input("Record your message", key=f"audio_input_{st.session_state.audio_input_key}")
     if audio_input is not None:
         audio_bytes = audio_input.getvalue()
         if not audio_bytes:

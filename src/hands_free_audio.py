@@ -20,10 +20,10 @@ def pcm16_duration_seconds(pcm_bytes: bytes) -> float:
     return len(pcm_bytes) / (SAMPLE_RATE * CHANNELS * BYTES_PER_PCM16_SAMPLE)
 
 
-def audio_frame_to_pcm16(frame: av.AudioFrame) -> bytes:
-    resampler = AudioResampler(format="s16", layout="mono", rate=SAMPLE_RATE)
+def audio_frame_to_pcm16(frame: av.AudioFrame, resampler: AudioResampler | None = None) -> bytes:
+    resampler = resampler or AudioResampler(format="s16", layout="mono", rate=SAMPLE_RATE)
     resampled_frames = resampler.resample(frame)
-    return b"".join(bytes(resampled.planes[0]) for resampled in resampled_frames)
+    return b"".join(resampled.to_ndarray().tobytes() for resampled in resampled_frames)
 
 
 @dataclass
@@ -32,6 +32,9 @@ class HandsFreeAudioBridge:
     _chunks: list[bytes] = field(default_factory=list)
     _paused: bool = False
     _stopped: bool = False
+    _resampler: AudioResampler = field(
+        default_factory=lambda: AudioResampler(format="s16", layout="mono", rate=SAMPLE_RATE)
+    )
 
     def set_paused(self, paused: bool) -> None:
         with self._lock:
@@ -46,7 +49,7 @@ class HandsFreeAudioBridge:
                 self._chunks = []
 
     def push_frame(self, frame: av.AudioFrame) -> None:
-        pcm_bytes = audio_frame_to_pcm16(frame)
+        pcm_bytes = audio_frame_to_pcm16(frame, self._resampler)
         self.push_pcm16(pcm_bytes)
 
     def push_pcm16(self, pcm_bytes: bytes) -> None:

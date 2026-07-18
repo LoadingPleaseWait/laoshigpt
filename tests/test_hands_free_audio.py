@@ -1,5 +1,8 @@
+import av
+import numpy as np
+
 from src.audio_util import SAMPLE_RATE
-from src.hands_free_audio import HandsFreeAudioBridge, pcm16_duration_seconds
+from src.hands_free_audio import HandsFreeAudioBridge, audio_frame_to_pcm16, pcm16_duration_seconds
 
 
 def test_pcm16_duration_seconds_for_one_second_mono_audio():
@@ -36,3 +39,25 @@ def test_bridge_returns_chunks_and_clears_queue():
 
     assert bridge.pop_pcm16_chunks() == [first, second]
     assert bridge.pop_pcm16_chunks() == []
+
+
+def test_audio_frame_conversion_uses_only_valid_mono_samples():
+    samples = np.array([[1, -2, 300]], dtype=np.int16)
+    frame = av.AudioFrame.from_ndarray(samples, format="s16", layout="mono")
+    frame.sample_rate = SAMPLE_RATE
+
+    assert audio_frame_to_pcm16(frame) == samples.tobytes()
+
+
+def test_bridge_reuses_its_resampler_for_frames():
+    samples = np.array([[1, 2]], dtype=np.int16)
+    frame = av.AudioFrame.from_ndarray(samples, format="s16", layout="mono")
+    frame.sample_rate = SAMPLE_RATE
+    bridge = HandsFreeAudioBridge()
+    resampler = bridge._resampler
+
+    bridge.push_frame(frame)
+    bridge.push_frame(frame)
+
+    assert bridge._resampler is resampler
+    assert bridge.pop_pcm16_chunks() == [samples.tobytes(), samples.tobytes()]

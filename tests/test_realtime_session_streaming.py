@@ -1,9 +1,17 @@
 import asyncio
 from concurrent.futures import Future
 import threading
+from types import SimpleNamespace
 from unittest.mock import patch
 
-from src.realtime_session import RealtimeTurnResult, StreamlitRealtimeSession
+from src.realtime_session import RealtimeTurnResult, StreamlitRealtimeSession, format_realtime_exception
+
+
+def test_realtime_websocket_400_error_mentions_model_override():
+    message = format_realtime_exception(Exception("server rejected WebSocket connection: HTTP 400"))
+
+    assert "OPENAI_REALTIME_MODEL" in message
+    assert "visible Realtime model" in message
 
 
 def test_poll_stream_result_returns_queued_result_without_network():
@@ -114,6 +122,100 @@ def test_stop_streaming_clears_buffered_pending_audio():
 
     assert session._stream_pending_audio == b""
     assert session._stream_audio_queue == []
+
+
+def test_stop_streaming_clears_queued_results_and_connection():
+    class FakeCloser:
+        def __init__(self) -> None:
+            self.closed = False
+
+        async def close(self) -> None:
+            self.closed = True
+
+    def close_task(coroutine, loop):
+        asyncio.run(coroutine)
+        task: Future[None] = Future()
+        task.set_result(None)
+        return task
+
+    session = StreamlitRealtimeSession.__new__(StreamlitRealtimeSession)
+    session._stream_lock = None
+    session._stream_audio_queue = [b"audio"]
+    session._stream_pending_audio = b"pending"
+    session._stream_results = [RealtimeTurnResult("old", "result", None)]
+    session._streaming = True
+    session._stream_task = None
+    session._loop = object()
+    connection = FakeCloser()
+    client = FakeCloser()
+    session._connection = connection
+    session._client = client
+
+    with patch("src.realtime_session.asyncio.run_coroutine_threadsafe", side_effect=close_task):
+        session.stop_streaming()
+
+    assert session._stream_results == []
+    assert session._connection is None
+    assert session._client is None
+    assert connection.closed
+    assert client.closed
+
+
+def test_late_transcript_after_response_done_emits_one_result_without_new_response():
+    class FakeInputAudioBuffer:
+        async def clear(self) -> None:
+            pass
+
+        async def append(self, *, audio: str) -> None:
+            pass
+
+    class FakeConnection:
+        def __init__(self, session) -> None:
+            self.input_audio_buffer = FakeInputAudioBuffer()
+            self.response = SimpleNamespace(create=self.create_response)
+            self._session = session
+            self._events = iter(
+                [
+                    SimpleNamespace(type="response.created"),
+                    SimpleNamespace(type="response.done", response=None),
+                    SimpleNamespace(
+                        type="conversation.item.input_audio_transcription.completed",
+                        transcript="late transcript",
+                    ),
+                ]
+            )
+            self.create_calls = 0
+
+        async def create_response(self, *, response) -> None:
+            self.create_calls += 1
+
+        async def recv(self):
+            event = next(self._events)
+            if event.type == "conversation.item.input_audio_transcription.completed":
+                self._session._streaming = False
+            return event
+
+    session = StreamlitRealtimeSession.__new__(StreamlitRealtimeSession)
+    session._stream_results = []
+    session._stream_lock = None
+    session._stream_audio_queue = []
+    session._stream_pending_audio = b""
+    session._streaming = True
+    session._stream_task = Future()
+    session._closed = False
+    connection = FakeConnection(session)
+    session._ensure_connection = lambda: None
+
+    async def ensure_connection():
+        return connection
+
+    session._ensure_connection = ensure_connection
+
+    asyncio.run(session._run_streaming())
+
+    assert session.poll_stream_result() == RealtimeTurnResult("late transcript", "(No transcript returned)", None)
+    assert session.poll_stream_result() is None
+    assert connection.create_calls == 0
 
 
 def test_failed_stream_queues_error_and_clears_stream_state():

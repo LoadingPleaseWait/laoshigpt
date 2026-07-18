@@ -6,6 +6,7 @@ import asyncio
 import base64
 import concurrent.futures
 import threading
+import time
 from dataclasses import dataclass
 
 from openai import AsyncOpenAI
@@ -15,6 +16,18 @@ from src.audio_util import SAMPLE_RATE
 from src.laoshi_prompt import LAOSHI_INSTRUCTIONS, MODEL_NAME
 
 MIN_INPUT_AUDIO_BYTES = int(SAMPLE_RATE * 0.1) * 2
+STREAM_TRANSCRIPT_GRACE_SECONDS = 1.5
+
+
+def format_realtime_exception(exc: Exception) -> str:
+    message = str(exc)
+    if "server rejected WebSocket connection: HTTP 400" in message:
+        return (
+            f"{message}. Realtime connection was rejected before the session started. "
+            f"Check that this API project has access to {MODEL_NAME!r}; "
+            "you can override it with OPENAI_REALTIME_MODEL set to a visible Realtime model."
+        )
+    return message
 
 
 @dataclass(frozen=True)
@@ -64,7 +77,7 @@ class StreamlitRealtimeSession:
             return future.result()
         except Exception as exc:
             self.close()
-            return RealtimeTurnResult("", "", None, str(exc))
+            return RealtimeTurnResult("", "", None, format_realtime_exception(exc))
 
     def start_streaming(self) -> None:
         stream_task = getattr(self, "_stream_task", None)
@@ -86,25 +99,40 @@ class StreamlitRealtimeSession:
             return self._stream_results.pop(0)
 
     def stop_streaming(self) -> None:
+        was_streaming = self._streaming
         self._streaming = False
         with self._get_stream_lock():
             self._stream_audio_queue = []
             self._stream_pending_audio = b""
+            self._stream_results = []
 
         stream_task = getattr(self, "_stream_task", None)
-        if stream_task is None or stream_task.done():
-            self._stream_task = None
-            return
-
-        if threading.current_thread() is not getattr(self, "_thread", None):
+        had_stream_task = stream_task is not None
+        if stream_task is not None and not stream_task.done():
+            if threading.current_thread() is getattr(self, "_thread", None):
+                return
             try:
                 stream_task.result(timeout=5)
             except TimeoutError:
                 return
             except concurrent.futures.CancelledError:
                 pass
-        if stream_task.done():
+
+        if stream_task is not None and stream_task.done():
             self._stream_task = None
+
+        if was_streaming or had_stream_task:
+            self._close_connection_after_streaming_stop()
+
+    def _close_connection_after_streaming_stop(self) -> None:
+        if getattr(self, "_connection", None) is None and getattr(self, "_client", None) is None:
+            return
+
+        future = asyncio.run_coroutine_threadsafe(self._close_async(), self._loop)
+        try:
+            future.result(timeout=5)
+        except Exception:
+            pass
 
     def _queue_stream_result(self, result: RealtimeTurnResult) -> None:
         with self._get_stream_lock():
@@ -156,13 +184,49 @@ class StreamlitRealtimeSession:
             connection = await self._ensure_connection()
             await connection.input_audio_buffer.clear()
             response_requested = False
+            response_done_at: float | None = None
+            transcription_completed = False
+
+            def emit_turn() -> None:
+                nonlocal assistant_audio_parts
+                nonlocal assistant_text_parts
+                nonlocal response_done_at
+                nonlocal response_requested
+                nonlocal saw_audio_transcript_delta
+                nonlocal transcription_completed
+                nonlocal user_text_parts
+
+                user_text = "".join(user_text_parts).strip()
+                assistant_text = "".join(assistant_text_parts).strip() or "(No transcript returned)"
+                assistant_audio = b"".join(assistant_audio_parts) if assistant_audio_parts else None
+                self._queue_stream_result(RealtimeTurnResult(user_text, assistant_text, assistant_audio))
+                response_requested = False
+                response_done_at = None
+                transcription_completed = False
+                user_text_parts = []
+                assistant_text_parts = []
+                assistant_audio_parts = []
+                saw_audio_transcript_delta = False
 
             while self._streaming and not self._closed:
                 await self._flush_stream_audio(connection)
 
+                timeout = 0.2
+                if response_done_at is not None:
+                    remaining = STREAM_TRANSCRIPT_GRACE_SECONDS - (time.monotonic() - response_done_at)
+                    if remaining <= 0:
+                        emit_turn()
+                        continue
+                    timeout = min(timeout, remaining)
+
                 try:
-                    event = await asyncio.wait_for(connection.recv(), timeout=0.2)
+                    event = await asyncio.wait_for(connection.recv(), timeout=timeout)
                 except TimeoutError:
+                    if (
+                        response_done_at is not None
+                        and time.monotonic() - response_done_at >= STREAM_TRANSCRIPT_GRACE_SECONDS
+                    ):
+                        emit_turn()
                     continue
 
                 event_type = getattr(event, "type", "")
@@ -173,7 +237,10 @@ class StreamlitRealtimeSession:
                     transcript = getattr(event, "transcript", None)
                     if isinstance(transcript, str) and transcript.strip():
                         user_text_parts = [transcript]
-                    if not response_requested:
+                    transcription_completed = True
+                    if response_done_at is not None:
+                        emit_turn()
+                    elif not response_requested:
                         await connection.response.create(response={"output_modalities": ["audio"]})
                         response_requested = True
                 elif event_type == "response.created":
@@ -192,21 +259,18 @@ class StreamlitRealtimeSession:
                             pass
                 elif event_type == "response.done":
                     self._extract_from_response_done(event, assistant_text_parts, assistant_audio_parts)
-                    user_text = "".join(user_text_parts).strip()
-                    assistant_text = "".join(assistant_text_parts).strip() or "(No transcript returned)"
-                    assistant_audio = b"".join(assistant_audio_parts) if assistant_audio_parts else None
-                    self._queue_stream_result(RealtimeTurnResult(user_text, assistant_text, assistant_audio))
-                    response_requested = False
-                    user_text_parts = []
-                    assistant_text_parts = []
-                    assistant_audio_parts = []
-                    saw_audio_transcript_delta = False
+                    response_requested = True
+                    response_done_at = time.monotonic()
+                    if transcription_completed:
+                        emit_turn()
                 elif event_type == "error":
                     raise RuntimeError(self._format_error(event))
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            self._queue_stream_result(RealtimeTurnResult("".join(user_text_parts).strip(), "", None, str(exc)))
+            self._queue_stream_result(
+                RealtimeTurnResult("".join(user_text_parts).strip(), "", None, format_realtime_exception(exc))
+            )
             try:
                 await self._close_async()
             except Exception:
