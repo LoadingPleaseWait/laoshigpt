@@ -31,6 +31,8 @@ def init_state() -> None:
         st.session_state.hands_free_bridge = HandsFreeAudioBridge()
     if "hands_free_active" not in st.session_state:
         st.session_state.hands_free_active = False
+    if "hands_free_enabled" not in st.session_state:
+        st.session_state.hands_free_enabled = False
     if "hands_free_resume_at" not in st.session_state:
         st.session_state.hands_free_resume_at = 0.0
     if "hands_free_webrtc_key" not in st.session_state:
@@ -81,6 +83,7 @@ def append_turn_result(result, *, hands_free: bool = False) -> None:
             if isinstance(bridge, HandsFreeAudioBridge):
                 bridge.set_stopped(True)
             st.session_state.hands_free_active = False
+            st.session_state.hands_free_enabled = False
             st.session_state.hands_free_webrtc_key += 1
             st.session_state.hands_free_resume_at = 0.0
     elif result.assistant_audio is not None:
@@ -101,6 +104,7 @@ def reset_chat() -> None:
     if isinstance(bridge, HandsFreeAudioBridge):
         bridge.set_stopped(True)
     st.session_state.hands_free_active = False
+    st.session_state.hands_free_enabled = False
     st.session_state.hands_free_resume_at = 0.0
     st.session_state.hands_free_webrtc_key += 1
     session = st.session_state.pop("realtime_session", None)
@@ -113,10 +117,25 @@ def reset_chat() -> None:
 
 def render_hands_free_controls() -> None:
     st.subheader("Hands-Free")
-    st.caption("Click START below to begin. Mic pauses while Laoshi speaks.")
+    st.caption("Click Start Hands-Free once. Mic pauses while Laoshi speaks, then listens again.")
 
     bridge = st.session_state.hands_free_bridge
     session = get_realtime_session()
+
+    start_col, stop_col = st.columns(2)
+    with start_col:
+        if st.button("Start Hands-Free", disabled=st.session_state.hands_free_enabled):
+            st.session_state.hands_free_enabled = True
+            bridge.set_stopped(False)
+            st.rerun()
+    with stop_col:
+        if st.button("Stop Hands-Free", disabled=not st.session_state.hands_free_enabled):
+            st.session_state.hands_free_enabled = False
+            st.session_state.hands_free_active = False
+            st.session_state.hands_free_resume_at = 0.0
+            bridge.set_stopped(True)
+            session.stop_streaming()
+            st.rerun()
 
     def audio_frame_callback(frame):
         bridge.push_frame(frame)
@@ -127,19 +146,22 @@ def render_hands_free_controls() -> None:
         mode=WebRtcMode.SENDONLY,
         audio_frame_callback=audio_frame_callback,
         media_stream_constraints={"video": False, "audio": True},
+        desired_playing_state=st.session_state.hands_free_enabled,
         async_processing=True,
     )
 
     active = bool(ctx.state.playing)
-    st.session_state.hands_free_active = active
-    bridge.set_stopped(not active)
+    st.session_state.hands_free_active = st.session_state.hands_free_enabled and active
+    bridge.set_stopped(not st.session_state.hands_free_enabled)
 
-    if active:
+    if st.session_state.hands_free_enabled:
         session.start_streaming()
         if time.time() < st.session_state.hands_free_resume_at:
             st.caption("Assistant speaking")
-        else:
+        elif active:
             st.info("Listening")
+        else:
+            st.caption("Starting microphone")
     else:
         session.stop_streaming()
         st.caption("Stopped")
@@ -155,7 +177,7 @@ def render_hands_free_controls() -> None:
 
 @st.fragment(run_every="500ms")
 def poll_hands_free_turns() -> None:
-    if not st.session_state.get("hands_free_active"):
+    if not st.session_state.get("hands_free_enabled"):
         return
 
     bridge = st.session_state.hands_free_bridge
