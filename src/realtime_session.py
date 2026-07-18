@@ -48,6 +48,9 @@ class StreamlitRealtimeSession:
         if self._closed:
             return RealtimeTurnResult("", "", None, "Realtime session is closed.")
         self.stop_streaming()
+        stream_task = getattr(self, "_stream_task", None)
+        if stream_task is not None and not stream_task.done():
+            return RealtimeTurnResult("", "", None, "Streaming session is still stopping.")
         if len(pcm_bytes) < MIN_INPUT_AUDIO_BYTES:
             return RealtimeTurnResult(
                 "",
@@ -64,7 +67,8 @@ class StreamlitRealtimeSession:
             return RealtimeTurnResult("", "", None, str(exc))
 
     def start_streaming(self) -> None:
-        if self._closed or self._streaming:
+        stream_task = getattr(self, "_stream_task", None)
+        if self._closed or self._streaming or (stream_task is not None and not stream_task.done()):
             return
         self._streaming = True
         self._stream_task = asyncio.run_coroutine_threadsafe(self._run_streaming(), self._loop)
@@ -92,13 +96,19 @@ class StreamlitRealtimeSession:
             self._stream_task = None
             return
 
-        stream_task.cancel()
         if threading.current_thread() is not getattr(self, "_thread", None):
             try:
                 stream_task.result(timeout=5)
-            except (concurrent.futures.CancelledError, TimeoutError):
+            except TimeoutError:
+                stream_task.cancel()
+                try:
+                    stream_task.result(timeout=5)
+                except (concurrent.futures.CancelledError, TimeoutError):
+                    pass
+            except concurrent.futures.CancelledError:
                 pass
-        self._stream_task = None
+        if stream_task.done():
+            self._stream_task = None
 
     def _queue_stream_result(self, result: RealtimeTurnResult) -> None:
         with self._get_stream_lock():
@@ -142,63 +152,71 @@ class StreamlitRealtimeSession:
         return await self._collect_turn(connection)
 
     async def _run_streaming(self) -> None:
-        connection = await self._ensure_connection()
-        await connection.input_audio_buffer.clear()
-        response_requested = False
         user_text_parts: list[str] = []
         assistant_text_parts: list[str] = []
         assistant_audio_parts: list[bytes] = []
         saw_audio_transcript_delta = False
+        try:
+            connection = await self._ensure_connection()
+            await connection.input_audio_buffer.clear()
+            response_requested = False
 
-        while self._streaming and not self._closed:
-            await self._flush_stream_audio(connection)
+            while self._streaming and not self._closed:
+                await self._flush_stream_audio(connection)
 
-            try:
-                event = await asyncio.wait_for(connection.recv(), timeout=0.2)
-            except TimeoutError:
-                continue
+                try:
+                    event = await asyncio.wait_for(connection.recv(), timeout=0.2)
+                except TimeoutError:
+                    continue
 
-            event_type = getattr(event, "type", "")
+                event_type = getattr(event, "type", "")
 
-            if event_type == "conversation.item.input_audio_transcription.delta":
-                self._append_text(user_text_parts, getattr(event, "delta", None))
-            elif event_type == "conversation.item.input_audio_transcription.completed":
-                transcript = getattr(event, "transcript", None)
-                if isinstance(transcript, str) and transcript.strip():
-                    user_text_parts = [transcript]
-                if not response_requested:
-                    await connection.response.create(response={"output_modalities": ["audio"]})
+                if event_type == "conversation.item.input_audio_transcription.delta":
+                    self._append_text(user_text_parts, getattr(event, "delta", None))
+                elif event_type == "conversation.item.input_audio_transcription.completed":
+                    transcript = getattr(event, "transcript", None)
+                    if isinstance(transcript, str) and transcript.strip():
+                        user_text_parts = [transcript]
+                    if not response_requested:
+                        await connection.response.create(response={"output_modalities": ["audio"]})
+                        response_requested = True
+                elif event_type == "response.created":
                     response_requested = True
-            elif event_type == "response.created":
-                response_requested = True
-            elif event_type == "response.output_audio_transcript.delta":
-                saw_audio_transcript_delta = True
-                self._append_text(assistant_text_parts, getattr(event, "delta", None))
-            elif event_type == "response.output_text.delta" and not saw_audio_transcript_delta:
-                self._append_text(assistant_text_parts, getattr(event, "delta", None))
-            elif event_type == "response.output_audio.delta":
-                delta = getattr(event, "delta", None)
-                if isinstance(delta, str):
-                    try:
-                        assistant_audio_parts.append(base64.b64decode(delta))
-                    except Exception:
-                        pass
-            elif event_type == "response.done":
-                self._extract_from_response_done(event, assistant_text_parts, assistant_audio_parts)
-                user_text = "".join(user_text_parts).strip()
-                assistant_text = "".join(assistant_text_parts).strip() or "(No transcript returned)"
-                assistant_audio = b"".join(assistant_audio_parts) if assistant_audio_parts else None
-                self._queue_stream_result(RealtimeTurnResult(user_text, assistant_text, assistant_audio))
-                response_requested = False
-                user_text_parts = []
-                assistant_text_parts = []
-                assistant_audio_parts = []
-                saw_audio_transcript_delta = False
-            elif event_type == "error":
-                self._queue_stream_result(
-                    RealtimeTurnResult("".join(user_text_parts).strip(), "", None, self._format_error(event))
-                )
-                self.stop_streaming()
+                elif event_type == "response.output_audio_transcript.delta":
+                    saw_audio_transcript_delta = True
+                    self._append_text(assistant_text_parts, getattr(event, "delta", None))
+                elif event_type == "response.output_text.delta" and not saw_audio_transcript_delta:
+                    self._append_text(assistant_text_parts, getattr(event, "delta", None))
+                elif event_type == "response.output_audio.delta":
+                    delta = getattr(event, "delta", None)
+                    if isinstance(delta, str):
+                        try:
+                            assistant_audio_parts.append(base64.b64decode(delta))
+                        except Exception:
+                            pass
+                elif event_type == "response.done":
+                    self._extract_from_response_done(event, assistant_text_parts, assistant_audio_parts)
+                    user_text = "".join(user_text_parts).strip()
+                    assistant_text = "".join(assistant_text_parts).strip() or "(No transcript returned)"
+                    assistant_audio = b"".join(assistant_audio_parts) if assistant_audio_parts else None
+                    self._queue_stream_result(RealtimeTurnResult(user_text, assistant_text, assistant_audio))
+                    response_requested = False
+                    user_text_parts = []
+                    assistant_text_parts = []
+                    assistant_audio_parts = []
+                    saw_audio_transcript_delta = False
+                elif event_type == "error":
+                    raise RuntimeError(self._format_error(event))
+        except asyncio.CancelledError:
+            raise
+        except Exception as exc:
+            self._queue_stream_result(RealtimeTurnResult("".join(user_text_parts).strip(), "", None, str(exc)))
+        finally:
+            self._streaming = False
+            with self._get_stream_lock():
+                self._stream_audio_queue = []
+                self._stream_pending_audio = b""
+            self._stream_task = None
 
     async def _flush_stream_audio(self, connection: AsyncRealtimeConnection) -> None:
         with self._get_stream_lock():
