@@ -37,6 +37,8 @@ def init_state() -> None:
         st.session_state.hands_free_resume_at = 0.0
     if "hands_free_webrtc_key" not in st.session_state:
         st.session_state.hands_free_webrtc_key = 0
+    if "hands_free_mic_started" not in st.session_state:
+        st.session_state.hands_free_mic_started = False
 
 
 def render_messages() -> None:
@@ -84,6 +86,7 @@ def append_turn_result(result, *, hands_free: bool = False) -> None:
                 bridge.set_stopped(True)
             st.session_state.hands_free_active = False
             st.session_state.hands_free_enabled = False
+            st.session_state.hands_free_mic_started = False
             st.session_state.hands_free_webrtc_key += 1
             st.session_state.hands_free_resume_at = 0.0
     elif result.assistant_audio is not None:
@@ -105,6 +108,7 @@ def reset_chat() -> None:
         bridge.set_stopped(True)
     st.session_state.hands_free_active = False
     st.session_state.hands_free_enabled = False
+    st.session_state.hands_free_mic_started = False
     st.session_state.hands_free_resume_at = 0.0
     st.session_state.hands_free_webrtc_key += 1
     session = st.session_state.pop("realtime_session", None)
@@ -113,6 +117,27 @@ def reset_chat() -> None:
     st.session_state.messages = []
     st.session_state.audio_input_key = 0
     init_state()
+
+
+def hands_free_status_label(*, now: float, active: bool, mic_started: bool, resume_at: float) -> tuple[str, str]:
+    if now < resume_at:
+        return "caption", "Mic paused for reply playback"
+    if active or mic_started:
+        return "info", "Listening"
+    return "caption", "Starting microphone"
+
+
+def render_hands_free_status() -> None:
+    status_kind, status_text = hands_free_status_label(
+        now=time.time(),
+        active=st.session_state.get("hands_free_active", False),
+        mic_started=st.session_state.get("hands_free_mic_started", False),
+        resume_at=st.session_state.get("hands_free_resume_at", 0.0),
+    )
+    if status_kind == "info":
+        st.info(status_text)
+    else:
+        st.caption(status_text)
 
 
 def render_hands_free_controls() -> None:
@@ -126,12 +151,14 @@ def render_hands_free_controls() -> None:
     with start_col:
         if st.button("Start Hands-Free", disabled=st.session_state.hands_free_enabled):
             st.session_state.hands_free_enabled = True
+            st.session_state.hands_free_mic_started = False
             bridge.set_stopped(False)
             st.rerun()
     with stop_col:
         if st.button("Stop Hands-Free", disabled=not st.session_state.hands_free_enabled):
             st.session_state.hands_free_enabled = False
             st.session_state.hands_free_active = False
+            st.session_state.hands_free_mic_started = False
             st.session_state.hands_free_resume_at = 0.0
             bridge.set_stopped(True)
             session.stop_streaming()
@@ -152,16 +179,12 @@ def render_hands_free_controls() -> None:
 
     active = bool(ctx.state.playing)
     st.session_state.hands_free_active = st.session_state.hands_free_enabled and active
+    if st.session_state.hands_free_active:
+        st.session_state.hands_free_mic_started = True
     bridge.set_stopped(not st.session_state.hands_free_enabled)
 
     if st.session_state.hands_free_enabled:
         session.start_streaming()
-        if time.time() < st.session_state.hands_free_resume_at:
-            st.caption("Assistant speaking")
-        elif active:
-            st.info("Listening")
-        else:
-            st.caption("Starting microphone")
     else:
         session.stop_streaming()
         st.caption("Stopped")
@@ -175,7 +198,6 @@ def render_hands_free_controls() -> None:
         st.caption("Realtime API error")
 
 
-@st.fragment(run_every="500ms")
 def poll_hands_free_turns() -> None:
     if not st.session_state.get("hands_free_enabled"):
         return
@@ -183,6 +205,7 @@ def poll_hands_free_turns() -> None:
     bridge = st.session_state.hands_free_bridge
     now = time.time()
     bridge.set_paused(now < st.session_state.hands_free_resume_at)
+    render_hands_free_status()
 
     session = get_realtime_session()
     for pcm_bytes in bridge.pop_pcm16_chunks():
@@ -193,6 +216,9 @@ def poll_hands_free_turns() -> None:
         bridge.set_paused(True)
         append_turn_result(result, hands_free=True)
         st.rerun()
+
+    time.sleep(0.5)
+    st.rerun()
 
 
 def main() -> None:
