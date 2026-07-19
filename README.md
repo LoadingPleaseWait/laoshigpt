@@ -9,7 +9,7 @@ AI-based Chinese tutoring app with two interfaces:
 
 ## 1) Prerequisites
 
-- Python **3.9+**
+- Python **3.10+**
 - An OpenAI API key
 
 Set your API key in the shell before running either app:
@@ -56,9 +56,16 @@ Then open the URL shown by Streamlit (usually `http://localhost:8501`).
 ### Web app features
 
 - Chat interface in browser
-- Optional microphone input (`st.audio_input`) with transcription
+- Manual microphone input (`st.audio_input`) with transcription
+- Optional hands-free microphone mode via browser WebRTC
 - Assistant text response
 - In-browser TTS playback of assistant responses
+
+### Hands-free mode
+
+The Hands-Free section starts only after you click START and grant browser microphone permission.
+While hands-free mode is active, Laoshi listens for your speech, responds after silence, pauses the microphone during assistant playback, then resumes listening.
+Manual recording remains available as a fallback.
 
 ---
 
